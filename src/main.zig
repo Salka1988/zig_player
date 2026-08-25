@@ -24,6 +24,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     const args = try init.minimal.args.toSlice(arena);
     var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
     var frame_count: usize = 0;
+    var audio_frame: ?zig_player.AudioFrame = null;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
@@ -61,6 +62,20 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                 "audio: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
             );
+
+            var decoder = try zig_player.FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream);
+            defer decoder.deinit();
+
+            while (audio_frame == null) {
+                if (try demuxer.readPacketForStream(stream.index)) |_| {
+                    try decoder.sendCurrentPacket(&demuxer);
+                    audio_frame = try decoder.receive();
+                } else {
+                    try decoder.sendEndOfStream();
+                    audio_frame = try decoder.receive();
+                    break;
+                }
+            }
         }
     }
 
@@ -69,6 +84,12 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         std.debug.print(
             "frame: {d}x{d} time={?d:.3}s\n",
             .{ frame.width, frame.height, frame.time_seconds },
+        );
+    }
+    if (audio_frame) |frame| {
+        std.debug.print(
+            "audio frame: samples={d} rate={d} channels={d} time={?d:.3}s\n",
+            .{ frame.sample_count, frame.sample_rate, frame.channel_count, if (frame.pts) |pts| pts.seconds else null },
         );
     }
 }
