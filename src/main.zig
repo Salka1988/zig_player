@@ -44,6 +44,13 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             );
         }
 
+        if (try demuxer.firstSupportedVideoStream()) |stream| {
+            std.debug.print(
+                "video: stream={d} codec={s}\n",
+                .{ stream.index, @tagName(stream.codec) },
+            );
+        }
+
         if (try demuxer.readPacket()) |p| {
             packet_summary = .{
                 .stream_index = p.stream_index,
