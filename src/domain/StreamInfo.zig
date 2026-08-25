@@ -1,3 +1,5 @@
+pub const Codec = @import("Codec.zig").Codec;
+
 pub const Kind = enum {
     video,
     audio,
@@ -7,4 +9,4 @@ pub const Kind = enum {
 
 index: u32,
 kind: Kind,
-codec_id: u32,
+codec: Codec,

@@ -50,7 +50,7 @@ pub fn streamInfo(self: *const @This(), index: u32) !StreamInfo {
     return .{
         .index = index,
         .kind = streamKind(codecpar.*.codec_type),
-        .codec_id = @intCast(codecpar.*.codec_id),
+        .codec = codec(codecpar.*.codec_id),
     };
 }
 
@@ -81,5 +81,18 @@ fn streamKind(media_type: c.enum_AVMediaType) StreamInfo.Kind {
         c.AVMEDIA_TYPE_AUDIO => .audio,
         c.AVMEDIA_TYPE_SUBTITLE => .subtitle,
         else => .other,
+    };
+}
+
+fn codec(codec_id: c_uint) StreamInfo.Codec {
+    return switch (codec_id) {
+        c.AV_CODEC_ID_H264 => .h264,
+        c.AV_CODEC_ID_HEVC => .hevc,
+        c.AV_CODEC_ID_AV1 => .av1,
+        c.AV_CODEC_ID_VP9 => .vp9,
+        c.AV_CODEC_ID_AAC => .aac,
+        c.AV_CODEC_ID_OPUS => .opus,
+        c.AV_CODEC_ID_MP3 => .mp3,
+        else => .unknown,
     };
 }

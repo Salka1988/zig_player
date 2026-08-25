@@ -39,8 +39,8 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         while (stream_index < demuxer.streamCount()) : (stream_index += 1) {
             const stream = try demuxer.streamInfo(stream_index);
             std.debug.print(
-                "stream: index={d} kind={s} codec={d}\n",
-                .{ stream.index, @tagName(stream.kind), stream.codec_id },
+                "stream: index={d} kind={s} codec={s}\n",
+                .{ stream.index, @tagName(stream.kind), @tagName(stream.codec) },
             );
         }
 
