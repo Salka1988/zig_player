@@ -17,7 +17,6 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     const FrameSummary = struct {
         width: u32,
         height: u32,
-        pts: ?i64,
         time_seconds: ?f64,
     };
 
@@ -67,8 +66,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                         frame_summary = .{
                             .width = frame.width,
                             .height = frame.height,
-                            .pts = frame.pts,
-                            .time_seconds = if (frame.pts) |pts| stream.time_base.seconds(pts) else null,
+                            .time_seconds = if (frame.pts) |pts| pts.seconds else null,
                         };
                     }
                 } else {
@@ -77,8 +75,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                         frame_summary = .{
                             .width = frame.width,
                             .height = frame.height,
-                            .pts = frame.pts,
-                            .time_seconds = if (frame.pts) |pts| stream.time_base.seconds(pts) else null,
+                            .time_seconds = if (frame.pts) |pts| pts.seconds else null,
                         };
                     }
                     break;
@@ -90,8 +87,8 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
     if (frame_summary) |frame| {
         std.debug.print(
-            "frame: {d}x{d} pts={?d} time={?d:.3}s\n",
-            .{ frame.width, frame.height, frame.pts, frame.time_seconds },
+            "frame: {d}x{d} time={?d:.3}s\n",
+            .{ frame.width, frame.height, frame.time_seconds },
         );
     }
 }

@@ -1,11 +1,13 @@
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
+const TimeBase = @import("../../domain/TimeBase.zig");
 const VideoFrame = @import("../../domain/VideoFrame.zig");
 const c = @import("../../ffmpeg/bindings.zig").c;
 
 ctx: *c.AVCodecContext,
 frame: *c.AVFrame,
 stream_index: u32,
+time_base: TimeBase,
 
 pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This() {
     if (stream.kind != .video) return error.NotVideoStream;
@@ -36,6 +38,7 @@ pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This
         .ctx = ctx,
         .frame = frame,
         .stream_index = stream.index,
+        .time_base = stream.time_base,
     };
 }
 
@@ -67,10 +70,13 @@ pub fn receive(self: *@This()) !?VideoFrame {
     return .{
         .width = @intCast(self.frame.width),
         .height = @intCast(self.frame.height),
-        .pts = timestamp(self.frame.best_effort_timestamp),
+        .pts = self.timestamp(self.frame.best_effort_timestamp),
     };
 }
 
-fn timestamp(value: i64) ?i64 {
-    return if (value == c.AV_NOPTS_VALUE) null else value;
+fn timestamp(self: *const @This(), value: i64) ?VideoFrame.Timestamp {
+    return if (value == c.AV_NOPTS_VALUE)
+        null
+    else
+        .{ .seconds = self.time_base.seconds(value) };
 }
