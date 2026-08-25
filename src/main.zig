@@ -4,12 +4,13 @@ const Io = std.Io;
 const zig_player = @import("zig_player");
 
 pub fn main(init: std.process.Init) !void {
-    var player = zig_player.Player.init();
-
     const arena: std.mem.Allocator = init.arena.allocator();
+    var player = zig_player.Player.init(arena);
+    defer player.deinit();
+
     const args = try init.minimal.args.toSlice(arena);
     if (args.len > 1) {
-        player.handle(.{ .load = args[1] });
+        try player.handle(.{ .load = args[1] });
     }
 
     const io = init.io;
