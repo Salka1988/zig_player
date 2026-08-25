@@ -55,6 +55,13 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                 .{ stream.index, @tagName(stream.codec) },
             );
         }
+
+        if (try demuxer.firstSupportedAudioStream()) |stream| {
+            std.debug.print(
+                "audio: stream={d} codec={s}\n",
+                .{ stream.index, @tagName(stream.codec) },
+            );
+        }
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});

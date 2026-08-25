@@ -69,6 +69,17 @@ pub fn firstSupportedVideoStream(self: *const @This()) !?StreamInfo {
     return null;
 }
 
+pub fn firstSupportedAudioStream(self: *const @This()) !?StreamInfo {
+    var index: u32 = 0;
+    while (index < self.streamCount()) : (index += 1) {
+        const stream = try self.streamInfo(index);
+        if (stream.kind == .audio and isSupportedAudioCodec(stream.codec)) {
+            return stream;
+        }
+    }
+    return null;
+}
+
 /// Returned packet data is borrowed from this demuxer until the next
 /// `readPacketForStream` call or `deinit`.
 fn readPacket(self: *@This()) !?Packet {
@@ -124,6 +135,13 @@ fn codec(codec_id: c_uint) StreamInfo.Codec {
 fn isSupportedVideoCodec(codec_id: StreamInfo.Codec) bool {
     return switch (codec_id) {
         .h264, .hevc, .av1, .vp9 => true,
+        else => false,
+    };
+}
+
+fn isSupportedAudioCodec(codec_id: StreamInfo.Codec) bool {
+    return switch (codec_id) {
+        .aac, .opus, .mp3 => true,
         else => false,
     };
 }
