@@ -51,6 +51,10 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                 "video: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
             );
+
+            var decoder = try zig_player.FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
+            defer decoder.deinit();
+            std.debug.print("decoder: stream={d}\n", .{decoder.stream_index});
         }
 
         if (video_stream) |stream| {
