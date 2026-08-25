@@ -24,17 +24,17 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     const args = try init.minimal.args.toSlice(arena);
     var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
     var frame_count: usize = 0;
-    var audio_result: zig_player.AudioProbe.Result = .{};
+    var probe: ?zig_player.MediaProbe.Result = null;
+    defer if (probe) |*result| result.deinit(player_allocator);
+
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
 
-        var demuxer = try zig_player.FfmpegDemuxer.open(player_allocator, args[1]);
-        defer demuxer.deinit();
+        probe = try zig_player.MediaProbe.run(player_allocator, args[1], &frames);
+        frame_count = probe.?.video.frame_count;
 
-        var stream_index: u32 = 0;
-        while (stream_index < demuxer.streamCount()) : (stream_index += 1) {
-            const stream = try demuxer.streamInfo(stream_index);
+        for (probe.?.streams) |stream| {
             std.debug.print(
                 "stream: index={d} kind={s} codec={s} time_base={d}/{d}\n",
                 .{
@@ -47,18 +47,14 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             );
         }
 
-        const result = try zig_player.VideoProbe.decodeFirstFrames(player_allocator, args[1], &frames);
-        frame_count = result.frame_count;
-
-        if (result.video_stream) |stream| {
+        if (probe.?.video.video_stream) |stream| {
             std.debug.print(
                 "video: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
             );
         }
 
-        audio_result = try zig_player.AudioProbe.decodeFirstFrame(player_allocator, args[1]);
-        if (audio_result.audio_stream) |stream| {
+        if (probe.?.audio.audio_stream) |stream| {
             std.debug.print(
                 "audio: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
@@ -73,10 +69,10 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             .{ frame.width, frame.height, frame.time_seconds },
         );
     }
-    if (audio_result.frame) |frame| {
+    if (probe) |result| if (result.audio.frame) |frame| {
         std.debug.print(
             "audio frame: samples={d} rate={d} channels={d} time={?d:.3}s\n",
             .{ frame.sample_count, frame.sample_rate, frame.channel_count, if (frame.pts) |pts| pts.seconds else null },
         );
-    }
+    };
 }
