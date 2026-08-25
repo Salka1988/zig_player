@@ -66,8 +66,8 @@ pub fn firstSupportedVideoStream(self: *const @This()) !?StreamInfo {
 }
 
 /// Returned packet data is borrowed from this demuxer until the next
-/// `readPacket` call or `deinit`.
-pub fn readPacket(self: *@This()) !?Packet {
+/// `readPacketForStream` call or `deinit`.
+fn readPacket(self: *@This()) !?Packet {
     c.av_packet_unref(self.packet);
 
     const result = c.av_read_frame(self.format_ctx, self.packet);
@@ -80,6 +80,15 @@ pub fn readPacket(self: *@This()) !?Packet {
         .pts = timestamp(self.packet.pts),
         .dts = timestamp(self.packet.dts),
     };
+}
+
+pub fn readPacketForStream(self: *@This(), stream_index: u32) !?Packet {
+    while (try self.readPacket()) |packet| {
+        if (packet.stream_index == stream_index) {
+            return packet;
+        }
+    }
+    return null;
 }
 
 fn timestamp(value: i64) ?i64 {

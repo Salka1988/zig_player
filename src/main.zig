@@ -28,6 +28,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
     const args = try init.minimal.args.toSlice(arena);
     var packet_summary: ?PacketSummary = null;
+    var video_stream: ?zig_player.StreamInfo = null;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
@@ -45,26 +46,29 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         }
 
         if (try demuxer.firstSupportedVideoStream()) |stream| {
+            video_stream = stream;
             std.debug.print(
                 "video: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
             );
         }
 
-        if (try demuxer.readPacket()) |p| {
-            packet_summary = .{
-                .stream_index = p.stream_index,
-                .bytes = p.data.len,
-                .pts = p.pts,
-                .dts = p.dts,
-            };
+        if (video_stream) |stream| {
+            if (try demuxer.readPacketForStream(stream.index)) |p| {
+                packet_summary = .{
+                    .stream_index = p.stream_index,
+                    .bytes = p.data.len,
+                    .pts = p.pts,
+                    .dts = p.dts,
+                };
+            }
         }
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
     if (packet_summary) |p| {
         std.debug.print(
-            "packet: stream={d} bytes={d} pts={?d} dts={?d}\n",
+            "video packet: stream={d} bytes={d} pts={?d} dts={?d}\n",
             .{ p.stream_index, p.bytes, p.pts, p.dts },
         );
     }
