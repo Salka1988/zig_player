@@ -1,8 +1,10 @@
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
+const VideoFrame = @import("../../domain/VideoFrame.zig");
 const c = @import("../../ffmpeg/bindings.zig").c;
 
 ctx: *c.AVCodecContext,
+frame: *c.AVFrame,
 stream_index: u32,
 
 pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This() {
@@ -24,13 +26,51 @@ pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This
         return error.Ffmpeg;
     }
 
+    const frame = c.av_frame_alloc() orelse return error.OutOfMemory;
+    errdefer {
+        var frame_to_free: ?*c.AVFrame = frame;
+        c.av_frame_free(&frame_to_free);
+    }
+
     return .{
         .ctx = ctx,
+        .frame = frame,
         .stream_index = stream.index,
     };
 }
 
 pub fn deinit(self: *@This()) void {
+    var frame: ?*c.AVFrame = self.frame;
+    c.av_frame_free(&frame);
+
     var ctx: ?*c.AVCodecContext = self.ctx;
     c.avcodec_free_context(&ctx);
+}
+
+pub fn sendCurrentPacket(self: *@This(), demuxer: *const FfmpegDemuxer) !void {
+    if (demuxer.packet.stream_index != self.stream_index) return error.WrongStream;
+
+    const result = c.avcodec_send_packet(self.ctx, demuxer.packet);
+    if (result < 0) return error.Ffmpeg;
+}
+
+pub fn sendEndOfStream(self: *@This()) !void {
+    const result = c.avcodec_send_packet(self.ctx, null);
+    if (result < 0) return error.Ffmpeg;
+}
+
+pub fn receive(self: *@This()) !?VideoFrame {
+    const result = c.avcodec_receive_frame(self.ctx, self.frame);
+    if (result == c.AVERROR(c.EAGAIN) or result == c.AVERROR_EOF) return null;
+    if (result < 0) return error.Ffmpeg;
+
+    return .{
+        .width = @intCast(self.frame.width),
+        .height = @intCast(self.frame.height),
+        .pts = timestamp(self.frame.best_effort_timestamp),
+    };
+}
+
+fn timestamp(value: i64) ?i64 {
+    return if (value == c.AV_NOPTS_VALUE) null else value;
 }

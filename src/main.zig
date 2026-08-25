@@ -14,11 +14,10 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
-    const PacketSummary = struct {
-        stream_index: u32,
-        bytes: usize,
+    const FrameSummary = struct {
+        width: u32,
+        height: u32,
         pts: ?i64,
-        dts: ?i64,
     };
 
     const arena: std.mem.Allocator = init.arena.allocator();
@@ -27,8 +26,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     defer player.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
-    var packet_summary: ?PacketSummary = null;
-    var video_stream: ?zig_player.StreamInfo = null;
+    var frame_summary: ?FrameSummary = null;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
@@ -46,7 +44,6 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         }
 
         if (try demuxer.firstSupportedVideoStream()) |stream| {
-            video_stream = stream;
             std.debug.print(
                 "video: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
@@ -55,25 +52,37 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             var decoder = try zig_player.FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
             defer decoder.deinit();
             std.debug.print("decoder: stream={d}\n", .{decoder.stream_index});
-        }
 
-        if (video_stream) |stream| {
-            if (try demuxer.readPacketForStream(stream.index)) |p| {
-                packet_summary = .{
-                    .stream_index = p.stream_index,
-                    .bytes = p.data.len,
-                    .pts = p.pts,
-                    .dts = p.dts,
-                };
+            while (frame_summary == null) {
+                if (try demuxer.readPacketForStream(stream.index)) |_| {
+                    try decoder.sendCurrentPacket(&demuxer);
+                    if (try decoder.receive()) |frame| {
+                        frame_summary = .{
+                            .width = frame.width,
+                            .height = frame.height,
+                            .pts = frame.pts,
+                        };
+                    }
+                } else {
+                    try decoder.sendEndOfStream();
+                    if (try decoder.receive()) |frame| {
+                        frame_summary = .{
+                            .width = frame.width,
+                            .height = frame.height,
+                            .pts = frame.pts,
+                        };
+                    }
+                    break;
+                }
             }
         }
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
-    if (packet_summary) |p| {
+    if (frame_summary) |frame| {
         std.debug.print(
-            "video packet: stream={d} bytes={d} pts={?d} dts={?d}\n",
-            .{ p.stream_index, p.bytes, p.pts, p.dts },
+            "frame: {d}x{d} pts={?d}\n",
+            .{ frame.width, frame.height, frame.pts },
         );
     }
 }
