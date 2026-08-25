@@ -15,11 +15,6 @@ pub fn main(init: std.process.Init) !void {
 
 fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     const max_frames = 5;
-    const FrameSummary = struct {
-        width: u32,
-        height: u32,
-        time_seconds: ?f64,
-    };
 
     const arena: std.mem.Allocator = init.arena.allocator();
 
@@ -27,7 +22,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     defer player.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
-    var frames: [max_frames]FrameSummary = undefined;
+    var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
     var frame_count: usize = 0;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
@@ -51,42 +46,14 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             );
         }
 
-        if (try demuxer.firstSupportedVideoStream()) |stream| {
+        const result = try zig_player.VideoProbe.decodeFirstFrames(player_allocator, args[1], &frames);
+        frame_count = result.frame_count;
+
+        if (result.video_stream) |stream| {
             std.debug.print(
                 "video: stream={d} codec={s}\n",
                 .{ stream.index, @tagName(stream.codec) },
             );
-
-            var decoder = try zig_player.FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
-            defer decoder.deinit();
-            std.debug.print("decoder: stream={d}\n", .{decoder.stream_index});
-
-            while (frame_count < max_frames) {
-                if (try demuxer.readPacketForStream(stream.index)) |_| {
-                    try decoder.sendCurrentPacket(&demuxer);
-                    while (frame_count < max_frames) {
-                        const frame = (try decoder.receive()) orelse break;
-                        frames[frame_count] = .{
-                            .width = frame.width,
-                            .height = frame.height,
-                            .time_seconds = if (frame.pts) |pts| pts.seconds else null,
-                        };
-                        frame_count += 1;
-                    }
-                } else {
-                    try decoder.sendEndOfStream();
-                    while (frame_count < max_frames) {
-                        const frame = (try decoder.receive()) orelse break;
-                        frames[frame_count] = .{
-                            .width = frame.width,
-                            .height = frame.height,
-                            .time_seconds = if (frame.pts) |pts| pts.seconds else null,
-                        };
-                        frame_count += 1;
-                    }
-                    break;
-                }
-            }
         }
     }
 
