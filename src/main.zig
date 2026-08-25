@@ -14,6 +14,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
+    const max_frames = 5;
     const FrameSummary = struct {
         width: u32,
         height: u32,
@@ -26,7 +27,8 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     defer player.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
-    var frame_summary: ?FrameSummary = null;
+    var frames: [max_frames]FrameSummary = undefined;
+    var frame_count: usize = 0;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
@@ -59,24 +61,28 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             defer decoder.deinit();
             std.debug.print("decoder: stream={d}\n", .{decoder.stream_index});
 
-            while (frame_summary == null) {
+            while (frame_count < max_frames) {
                 if (try demuxer.readPacketForStream(stream.index)) |_| {
                     try decoder.sendCurrentPacket(&demuxer);
-                    if (try decoder.receive()) |frame| {
-                        frame_summary = .{
+                    while (frame_count < max_frames) {
+                        const frame = (try decoder.receive()) orelse break;
+                        frames[frame_count] = .{
                             .width = frame.width,
                             .height = frame.height,
                             .time_seconds = if (frame.pts) |pts| pts.seconds else null,
                         };
+                        frame_count += 1;
                     }
                 } else {
                     try decoder.sendEndOfStream();
-                    if (try decoder.receive()) |frame| {
-                        frame_summary = .{
+                    while (frame_count < max_frames) {
+                        const frame = (try decoder.receive()) orelse break;
+                        frames[frame_count] = .{
                             .width = frame.width,
                             .height = frame.height,
                             .time_seconds = if (frame.pts) |pts| pts.seconds else null,
                         };
+                        frame_count += 1;
                     }
                     break;
                 }
@@ -85,7 +91,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
-    if (frame_summary) |frame| {
+    for (frames[0..frame_count]) |frame| {
         std.debug.print(
             "frame: {d}x{d} time={?d:.3}s\n",
             .{ frame.width, frame.height, frame.time_seconds },
