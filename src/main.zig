@@ -34,6 +34,16 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
         var demuxer = try zig_player.FfmpegDemuxer.open(player_allocator, args[1]);
         defer demuxer.deinit();
+
+        var stream_index: u32 = 0;
+        while (stream_index < demuxer.streamCount()) : (stream_index += 1) {
+            const stream = try demuxer.streamInfo(stream_index);
+            std.debug.print(
+                "stream: index={d} kind={s} codec={d}\n",
+                .{ stream.index, @tagName(stream.kind), stream.codec_id },
+            );
+        }
+
         if (try demuxer.readPacket()) |p| {
             packet_summary = .{
                 .stream_index = p.stream_index,

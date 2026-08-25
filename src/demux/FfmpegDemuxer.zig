@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Packet = @import("../domain/Packet.zig");
+const StreamInfo = @import("../domain/StreamInfo.zig");
 const c = @import("../ffmpeg/bindings.zig").c;
 
 format_ctx: *c.AVFormatContext,
@@ -36,6 +37,23 @@ pub fn deinit(self: *@This()) void {
     c.avformat_close_input(&format_ctx);
 }
 
+pub fn streamCount(self: *const @This()) u32 {
+    return self.format_ctx.nb_streams;
+}
+
+pub fn streamInfo(self: *const @This(), index: u32) !StreamInfo {
+    if (index >= self.format_ctx.nb_streams) return error.StreamNotFound;
+
+    const stream = self.format_ctx.streams[index];
+    const codecpar = stream.*.codecpar;
+
+    return .{
+        .index = index,
+        .kind = streamKind(codecpar.*.codec_type),
+        .codec_id = @intCast(codecpar.*.codec_id),
+    };
+}
+
 /// Returned packet data is borrowed from this demuxer until the next
 /// `readPacket` call or `deinit`.
 pub fn readPacket(self: *@This()) !?Packet {
@@ -55,4 +73,13 @@ pub fn readPacket(self: *@This()) !?Packet {
 
 fn timestamp(value: i64) ?i64 {
     return if (value == c.AV_NOPTS_VALUE) null else value;
+}
+
+fn streamKind(media_type: c.enum_AVMediaType) StreamInfo.Kind {
+    return switch (media_type) {
+        c.AVMEDIA_TYPE_VIDEO => .video,
+        c.AVMEDIA_TYPE_AUDIO => .audio,
+        c.AVMEDIA_TYPE_SUBTITLE => .subtitle,
+        else => .other,
+    };
 }
