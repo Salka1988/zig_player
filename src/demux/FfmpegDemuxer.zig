@@ -51,6 +51,10 @@ pub fn streamInfo(self: *const @This(), index: u32) !StreamInfo {
         .index = index,
         .kind = streamKind(codecpar.*.codec_type),
         .codec = codec(codecpar.*.codec_id),
+        .time_base = .{
+            .num = stream.*.time_base.num,
+            .den = stream.*.time_base.den,
+        },
     };
 }
 

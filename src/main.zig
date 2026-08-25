@@ -18,6 +18,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         width: u32,
         height: u32,
         pts: ?i64,
+        time_seconds: ?f64,
     };
 
     const arena: std.mem.Allocator = init.arena.allocator();
@@ -38,8 +39,14 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         while (stream_index < demuxer.streamCount()) : (stream_index += 1) {
             const stream = try demuxer.streamInfo(stream_index);
             std.debug.print(
-                "stream: index={d} kind={s} codec={s}\n",
-                .{ stream.index, @tagName(stream.kind), @tagName(stream.codec) },
+                "stream: index={d} kind={s} codec={s} time_base={d}/{d}\n",
+                .{
+                    stream.index,
+                    @tagName(stream.kind),
+                    @tagName(stream.codec),
+                    stream.time_base.num,
+                    stream.time_base.den,
+                },
             );
         }
 
@@ -61,6 +68,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                             .width = frame.width,
                             .height = frame.height,
                             .pts = frame.pts,
+                            .time_seconds = if (frame.pts) |pts| stream.time_base.seconds(pts) else null,
                         };
                     }
                 } else {
@@ -70,6 +78,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
                             .width = frame.width,
                             .height = frame.height,
                             .pts = frame.pts,
+                            .time_seconds = if (frame.pts) |pts| stream.time_base.seconds(pts) else null,
                         };
                     }
                     break;
@@ -81,8 +90,8 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
     if (frame_summary) |frame| {
         std.debug.print(
-            "frame: {d}x{d} pts={?d}\n",
-            .{ frame.width, frame.height, frame.pts },
+            "frame: {d}x{d} pts={?d} time={?d:.3}s\n",
+            .{ frame.width, frame.height, frame.pts, frame.time_seconds },
         );
     }
 }
