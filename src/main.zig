@@ -6,7 +6,7 @@ const zig_player = @import("zig_player");
 pub fn main(init: std.process.Init) !void {
     if (builtin.mode == .Debug) {
         var debug_allocator = std.heap.DebugAllocator(.{}){};
-        defer _ = debug_allocator.deinit();
+        defer std.debug.assert(debug_allocator.deinit() == .ok);
         try run(init, debug_allocator.allocator());
     } else {
         try run(init, std.heap.smp_allocator);
@@ -14,27 +14,41 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
+    const PacketSummary = struct {
+        stream_index: u32,
+        bytes: usize,
+        pts: ?i64,
+        dts: ?i64,
+    };
+
     const arena: std.mem.Allocator = init.arena.allocator();
 
     var player = zig_player.Player.init(player_allocator);
     defer player.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
-    var packet: ?zig_player.Packet = null;
+    var packet_summary: ?PacketSummary = null;
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
 
         var demuxer = try zig_player.FfmpegDemuxer.open(player_allocator, args[1]);
         defer demuxer.deinit();
-        packet = try demuxer.readPacket();
+        if (try demuxer.readPacket()) |p| {
+            packet_summary = .{
+                .stream_index = p.stream_index,
+                .bytes = p.data.len,
+                .pts = p.pts,
+                .dts = p.dts,
+            };
+        }
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
-    if (packet) |p| {
+    if (packet_summary) |p| {
         std.debug.print(
             "packet: stream={d} bytes={d} pts={?d} dts={?d}\n",
-            .{ p.stream_index, p.data.len, p.pts, p.dts },
+            .{ p.stream_index, p.bytes, p.pts, p.dts },
         );
     }
 }

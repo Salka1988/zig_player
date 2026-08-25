@@ -14,17 +14,17 @@ pub fn open(allocator: std.mem.Allocator, path: []const u8) !@This() {
     if (c.avformat_open_input(&format_ctx, path_z.ptr, null, null) < 0) {
         return error.Ffmpeg;
     }
-    errdefer c.avformat_close_input(&format_ctx);
+    errdefer if (format_ctx != null) {
+        c.avformat_close_input(&format_ctx);
+    };
 
     if (c.avformat_find_stream_info(format_ctx, null) < 0) {
         return error.Ffmpeg;
     }
 
-    const packet = c.av_packet_alloc() orelse return error.OutOfMemory;
-
     return .{
         .format_ctx = format_ctx.?,
-        .packet = packet,
+        .packet = c.av_packet_alloc() orelse return error.OutOfMemory,
     };
 }
 
@@ -36,6 +36,8 @@ pub fn deinit(self: *@This()) void {
     c.avformat_close_input(&format_ctx);
 }
 
+/// Returned packet data is borrowed from this demuxer until the next
+/// `readPacket` call or `deinit`.
 pub fn readPacket(self: *@This()) !?Packet {
     c.av_packet_unref(self.packet);
 
