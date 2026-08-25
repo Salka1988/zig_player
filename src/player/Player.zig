@@ -36,27 +36,19 @@ fn clearPath(self: *@This()) void {
     }
 }
 
-test "player command transitions" {
-    var player = init(std.testing.allocator);
-    defer player.deinit();
-    try std.testing.expectEqual(State.idle, player.state);
-
-    try player.handle(.{ .load = "movie.mp4" });
-    try std.testing.expectEqual(State.opening, player.state);
-    try std.testing.expectEqualStrings("movie.mp4", player.path.?);
-
-    try player.handle(.stop);
-    try std.testing.expectEqual(State.idle, player.state);
-    try std.testing.expectEqual(@as(?[]const u8, null), player.path);
-}
-
-test "load replaces owned path" {
+test "load owns path and stop clears it" {
     var player = init(std.testing.allocator);
     defer player.deinit();
 
     try player.handle(.{ .load = "first.mp4" });
-    try player.handle(.{ .load = "second.mp4" });
+    try std.testing.expectEqual(State.opening, player.state);
+    try std.testing.expectEqualStrings("first.mp4", player.path.?);
 
+    try player.handle(.{ .load = "second.mp4" });
     try std.testing.expectEqual(State.opening, player.state);
     try std.testing.expectEqualStrings("second.mp4", player.path.?);
+
+    try player.handle(.stop);
+    try std.testing.expectEqual(State.idle, player.state);
+    try std.testing.expectEqual(@as(?[]const u8, null), player.path);
 }

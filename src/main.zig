@@ -21,6 +21,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
     const args = try init.minimal.args.toSlice(arena);
     if (args.len > 1) {
+        try std.Io.Dir.cwd().access(init.io, args[1], .{});
         try player.handle(.{ .load = args[1] });
     }
 
