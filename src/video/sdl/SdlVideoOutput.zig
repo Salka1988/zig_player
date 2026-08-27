@@ -60,7 +60,8 @@ pub fn present(self: *@This(), frame: Yuv420pFrame) !bool {
     if (sdl.SDL_RenderClear(self.renderer) < 0) return error.Sdl;
     if (sdl.SDL_RenderCopy(self.renderer, self.texture, null, null) < 0) return error.Sdl;
     sdl.SDL_RenderPresent(self.renderer);
+    sdl.SDL_PumpEvents();
 
-    sdl.SDL_Delay(16);
+    sdl.SDL_Delay(33);
     return true;
 }
