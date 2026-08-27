@@ -14,6 +14,8 @@ pub const Yuv420pFrame = @import("domain/Yuv420pFrame.zig");
 pub const FfmpegDemuxer = @import("demux/FfmpegDemuxer.zig");
 pub const FfmpegAudioDecoder = @import("codec/audio/FfmpegAudioDecoder.zig");
 pub const FfmpegVideoDecoder = @import("codec/video/FfmpegVideoDecoder.zig");
+pub const FfmpegPacket = @import("ffmpeg/Packet.zig");
+pub const PacketQueue = @import("pipeline/PacketQueue.zig");
 pub const ffmpeg = @import("ffmpeg/bindings.zig");
 
 test {
@@ -25,6 +27,8 @@ test {
     _ = @import("codec/audio/FfmpegAudioDecoder.zig");
     _ = @import("codec/video/FfmpegVideoDecoder.zig");
     _ = @import("ffmpeg/bindings.zig");
+    _ = @import("ffmpeg/Packet.zig");
+    _ = @import("pipeline/PacketQueue.zig");
     _ = @import("sdl/bindings.zig");
     _ = @import("audio/sdl/SdlAudioOutput.zig");
     _ = @import("video/sdl/SdlVideoOutput.zig");
