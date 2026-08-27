@@ -23,7 +23,7 @@ pub fn decodeFirstFrame(
     defer decoder.deinit();
 
     while (true) {
-        if (try demuxer.readPacketForStream(stream.index)) |_| {
+        if (try demuxer.readPacketForStream(stream.index)) {
             try decoder.sendCurrentPacket(&demuxer);
             if (try decoder.receive()) |frame| {
                 return .{ .audio_stream = stream, .frame = frame };

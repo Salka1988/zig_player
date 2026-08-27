@@ -30,7 +30,7 @@ pub fn decodeFirstFrames(
 
     var frame_count: usize = 0;
     while (frame_count < out.len) {
-        if (try demuxer.readPacketForStream(stream.index)) |_| {
+        if (try demuxer.readPacketForStream(stream.index)) {
             try decoder.sendCurrentPacket(&demuxer);
             try receiveAvailable(&decoder, out, &frame_count);
         } else {

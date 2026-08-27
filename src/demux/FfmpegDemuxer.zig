@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const Packet = @import("../domain/Packet.zig");
 const StreamInfo = @import("../domain/StreamInfo.zig");
 const c = @import("../ffmpeg/bindings.zig").c;
 
@@ -80,34 +79,23 @@ pub fn firstSupportedAudioStream(self: *const @This()) !?StreamInfo {
     return null;
 }
 
-/// Returned packet data is borrowed from this demuxer until the next
-/// `readPacketForStream` call or `deinit`.
-fn readPacket(self: *@This()) !?Packet {
+fn readPacket(self: *@This()) !bool {
     c.av_packet_unref(self.packet);
 
     const result = c.av_read_frame(self.format_ctx, self.packet);
-    if (result == c.AVERROR_EOF) return null;
+    if (result == c.AVERROR_EOF) return false;
     if (result < 0) return error.Ffmpeg;
 
-    return .{
-        .data = self.packet.data[0..@intCast(self.packet.size)],
-        .stream_index = @intCast(self.packet.stream_index),
-        .pts = timestamp(self.packet.pts),
-        .dts = timestamp(self.packet.dts),
-    };
+    return true;
 }
 
-pub fn readPacketForStream(self: *@This(), stream_index: u32) !?Packet {
-    while (try self.readPacket()) |packet| {
-        if (packet.stream_index == stream_index) {
-            return packet;
+pub fn readPacketForStream(self: *@This(), stream_index: u32) !bool {
+    while (try self.readPacket()) {
+        if (self.packet.stream_index == stream_index) {
+            return true;
         }
     }
-    return null;
-}
-
-fn timestamp(value: i64) ?i64 {
-    return if (value == c.AV_NOPTS_VALUE) null else value;
+    return false;
 }
 
 fn streamKind(media_type: c.enum_AVMediaType) StreamInfo.Kind {

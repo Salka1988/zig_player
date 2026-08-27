@@ -5,7 +5,6 @@ pub const AudioProbe = @import("player/AudioProbe.zig");
 pub const MediaProbe = @import("player/MediaProbe.zig");
 pub const VideoProbe = @import("player/VideoProbe.zig");
 pub const Codec = @import("domain/Codec.zig").Codec;
-pub const Packet = @import("domain/Packet.zig");
 pub const StreamInfo = @import("domain/StreamInfo.zig");
 pub const TimeBase = @import("domain/TimeBase.zig");
 pub const Timestamp = @import("domain/Timestamp.zig");
