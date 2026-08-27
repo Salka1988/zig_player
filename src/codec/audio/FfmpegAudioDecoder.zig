@@ -1,6 +1,7 @@
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const AudioFrame = @import("../../domain/AudioFrame.zig");
 const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
+const Packet = @import("../../ffmpeg/Packet.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
 const TimeBase = @import("../../domain/TimeBase.zig");
 const c = @import("../../ffmpeg/bindings.zig").c;
@@ -55,6 +56,13 @@ pub fn sendCurrentPacket(self: *@This(), demuxer: *const FfmpegDemuxer) !void {
     if (demuxer.packet.stream_index != self.stream_index) return error.WrongStream;
 
     const result = c.avcodec_send_packet(self.ctx, demuxer.packet);
+    if (result < 0) return error.Ffmpeg;
+}
+
+pub fn sendPacket(self: *@This(), packet: *const Packet) !void {
+    if (packet.streamIndex() != self.stream_index) return error.WrongStream;
+
+    const result = c.avcodec_send_packet(self.ctx, packet.packet);
     if (result < 0) return error.Ffmpeg;
 }
 

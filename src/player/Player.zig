@@ -4,6 +4,8 @@ const FfmpegAudioDecoder = @import("../codec/audio/FfmpegAudioDecoder.zig");
 const FfmpegDemuxer = @import("../demux/FfmpegDemuxer.zig");
 const FfmpegVideoDecoder = @import("../codec/video/FfmpegVideoDecoder.zig");
 const MediaProbe = @import("MediaProbe.zig");
+const Packet = @import("../ffmpeg/Packet.zig");
+const PacketQueue = @import("../pipeline/PacketQueue.zig");
 const SdlAudioOutput = @import("../audio/sdl/SdlAudioOutput.zig");
 const SdlVideoOutput = @import("../video/sdl/SdlVideoOutput.zig");
 const State = @import("State.zig").State;
@@ -12,6 +14,7 @@ const sdl = @import("../sdl/bindings.zig");
 
 const no_audio_start = std.math.maxInt(u64);
 const max_audio_queue_seconds = 0.5;
+const packet_queue_capacity = 128;
 
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
@@ -45,10 +48,6 @@ const AudioClock = struct {
     fn markDone(self: *AudioClock) void {
         @atomicStore(u8, &self.done, 1, .release);
     }
-
-    fn isDone(self: *AudioClock) bool {
-        return @atomicLoad(u8, &self.done, .acquire) != 0;
-    }
 };
 
 const PlaybackControl = struct {
@@ -65,8 +64,19 @@ const PlaybackControl = struct {
 
 const AudioThreadContext = struct {
     allocator: std.mem.Allocator,
-    path: []const u8,
+    queue: *PacketQueue,
+    decoder: *FfmpegAudioDecoder,
     clock: *AudioClock,
+    control: *PlaybackControl,
+    err: ?anyerror = null,
+};
+
+const DemuxThreadContext = struct {
+    demuxer: *FfmpegDemuxer,
+    video_queue: *PacketQueue,
+    audio_queue: ?*PacketQueue,
+    video_stream_index: u32,
+    audio_stream_index: ?u32,
     control: *PlaybackControl,
     err: ?anyerror = null,
 };
@@ -108,16 +118,33 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     defer demuxer.deinit();
 
     const video_stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
-    const has_audio = (try demuxer.firstSupportedAudioStream()) != null;
+    const audio_stream = try demuxer.firstSupportedAudioStream();
+    const has_audio = audio_stream != null;
 
     var video_decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, video_stream);
     defer video_decoder.deinit();
+
+    var audio_decoder: ?FfmpegAudioDecoder = if (audio_stream) |stream|
+        try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream)
+    else
+        null;
+    defer if (audio_decoder) |*decoder| decoder.deinit();
+
+    var video_queue = try PacketQueue.init(self.allocator, packet_queue_capacity);
+    defer video_queue.deinit(self.allocator);
+
+    var audio_queue: ?PacketQueue = if (has_audio)
+        try PacketQueue.init(self.allocator, packet_queue_capacity)
+    else
+        null;
+    defer if (audio_queue) |*queue| queue.deinit(self.allocator);
 
     var audio_clock: AudioClock = .{};
     var control: PlaybackControl = .{};
     var audio_context: ?AudioThreadContext = if (has_audio) .{
         .allocator = self.allocator,
-        .path = path,
+        .queue = &audio_queue.?,
+        .decoder = &audio_decoder.?,
         .clock = &audio_clock,
         .control = &control,
     } else null;
@@ -127,7 +154,25 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
         null;
     errdefer {
         control.requestStop();
+        video_queue.close();
+        if (audio_queue) |*queue| queue.close();
         if (audio_thread) |thread| thread.join();
+    }
+
+    var demux_context: DemuxThreadContext = .{
+        .demuxer = &demuxer,
+        .video_queue = &video_queue,
+        .audio_queue = if (audio_queue) |*queue| queue else null,
+        .video_stream_index = video_stream.index,
+        .audio_stream_index = if (audio_stream) |stream| stream.index else null,
+        .control = &control,
+    };
+    const demux_thread = try std.Thread.spawn(.{}, demuxThreadMain, .{&demux_context});
+    errdefer {
+        control.requestStop();
+        video_queue.close();
+        if (audio_queue) |*queue| queue.close();
+        demux_thread.join();
     }
 
     var video_output: ?SdlVideoOutput = null;
@@ -136,8 +181,11 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     var video_clock: VideoPlaybackClock = .{};
     var stats: VideoDecodeStats = .{};
     var keep_playing = true;
-    while (keep_playing and try demuxer.readPacketForStream(video_stream.index)) {
-        try video_decoder.sendCurrentPacket(&demuxer);
+    while (keep_playing) {
+        var packet = video_queue.pop() orelse break;
+        defer packet.deinit();
+
+        try video_decoder.sendPacket(&packet);
         keep_playing = try receiveAndPresentVideo(
             &video_decoder,
             &video_output,
@@ -158,9 +206,13 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
         );
     } else {
         control.requestStop();
+        video_queue.close();
+        if (audio_queue) |*queue| queue.close();
     }
 
+    demux_thread.join();
     if (audio_thread) |thread| thread.join();
+    if (demux_context.err) |err| return err;
     if (audio_context) |context| if (context.err) |err| return err;
 
     return stats;
@@ -180,26 +232,48 @@ fn audioThreadMain(context: *AudioThreadContext) void {
     context.clock.markDone();
 }
 
+fn demuxThreadMain(context: *DemuxThreadContext) void {
+    runDemuxThread(context) catch |err| {
+        context.err = err;
+    };
+    context.video_queue.close();
+    if (context.audio_queue) |queue| queue.close();
+}
+
+fn runDemuxThread(context: *DemuxThreadContext) !void {
+    while (!context.control.shouldStop()) {
+        const stream_index = (try context.demuxer.readPacket()) orelse return;
+        if (stream_index == context.video_stream_index) {
+            try pushPacket(context.video_queue, context.demuxer.packet);
+        } else if (context.audio_stream_index != null and stream_index == context.audio_stream_index.?) {
+            if (context.audio_queue) |queue| {
+                try pushPacket(queue, context.demuxer.packet);
+            }
+        }
+    }
+}
+
+fn pushPacket(queue: *PacketQueue, packet: *const @import("../ffmpeg/bindings.zig").c.AVPacket) !void {
+    queue.push(try Packet.clone(packet)) catch |err| switch (err) {
+        error.QueueClosed => return,
+    };
+}
+
 fn runAudioThread(context: *AudioThreadContext) !void {
-    var demuxer = try FfmpegDemuxer.open(context.allocator, context.path);
-    defer demuxer.deinit();
-
-    const stream = (try demuxer.firstSupportedAudioStream()) orelse return;
-
-    var decoder = try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream);
-    defer decoder.deinit();
-
     var output: ?SdlAudioOutput = null;
     defer if (output) |*audio_output| audio_output.deinit();
 
-    while (!context.control.shouldStop() and try demuxer.readPacketForStream(stream.index)) {
-        try decoder.sendCurrentPacket(&demuxer);
-        try receiveAndQueueAudio(&decoder, &output, context);
+    while (!context.control.shouldStop()) {
+        var packet = context.queue.pop() orelse break;
+        defer packet.deinit();
+
+        try context.decoder.sendPacket(&packet);
+        try receiveAndQueueAudio(&output, context);
     }
 
     if (!context.control.shouldStop()) {
-        try decoder.sendEndOfStream();
-        try receiveAndQueueAudio(&decoder, &output, context);
+        try context.decoder.sendEndOfStream();
+        try receiveAndQueueAudio(&output, context);
         if (output) |*audio_output| audio_output.drain();
     }
 }
@@ -226,12 +300,11 @@ fn receiveAndPresentVideo(
 }
 
 fn receiveAndQueueAudio(
-    decoder: *FfmpegAudioDecoder,
     output: *?SdlAudioOutput,
     context: *AudioThreadContext,
 ) !void {
-    while (try decoder.receive()) |_| {
-        const frame = try decoder.currentF32Planar();
+    while (try context.decoder.receive()) |_| {
+        const frame = try context.decoder.currentF32Planar();
         if (output.* == null) {
             output.* = try SdlAudioOutput.init(frame.sample_rate, frame.channel_count);
         }
@@ -256,13 +329,11 @@ fn waitForVideoTime(
     const seconds = frame_seconds orelse return;
 
     if (audio_clock) |clock| {
-        while (clock.seconds() == null and !clock.isDone()) {
-            sdl.SDL_Delay(1);
-        }
-
-        while (clock.seconds()) |audio_seconds| {
-            if (audio_seconds >= seconds) return;
-            sdl.SDL_Delay(1);
+        if (clock.seconds() != null) {
+            while (clock.seconds()) |audio_seconds| {
+                if (audio_seconds >= seconds) return;
+                sdl.SDL_Delay(1);
+            }
         }
     }
 
