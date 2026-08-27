@@ -14,16 +14,13 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
-    const max_frames = 5;
-
     const arena: std.mem.Allocator = init.arena.allocator();
 
     var player = zig_player.Player.init(player_allocator);
     defer player.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
-    var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
-    var frame_count: usize = 0;
+    var frames: [0]zig_player.VideoProbe.FrameSummary = .{};
     var probe: ?zig_player.MediaProbe.Result = null;
     var video_play_stats: zig_player.Player.VideoDecodeStats = .{};
     defer if (probe) |*result| result.deinit(player_allocator);
@@ -33,7 +30,6 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
         try player.open(args[1]);
 
         probe = try player.probeLoaded(&frames);
-        frame_count = probe.?.video.frame_count;
         video_play_stats = try player.playLoadedVideoWindow();
 
         for (probe.?.streams) |stream| {
@@ -65,12 +61,6 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
-    for (frames[0..frame_count], 0..) |frame, index| {
-        std.debug.print(
-            "video present: frame={d} size={d}x{d} time={?d:.3}s\n",
-            .{ index, frame.width, frame.height, frame.time_seconds },
-        );
-    }
     if (probe) |result| if (result.audio.frame) |frame| {
         std.debug.print(
             "audio frame: samples={d} rate={d} channels={d} time={?d:.3}s\n",

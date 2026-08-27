@@ -24,6 +24,9 @@ pub fn decodeFirstFrames(
     defer demuxer.deinit();
 
     const stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
+    if (out.len == 0) {
+        return .{ .video_stream = stream };
+    }
 
     var decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
     defer decoder.deinit();
