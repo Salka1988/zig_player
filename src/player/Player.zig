@@ -14,10 +14,13 @@ const sdl = @import("../sdl/bindings.zig");
 
 const no_audio_start = std.math.maxInt(u64);
 const max_audio_queue_seconds = 0.5;
+// ponytail: fixed late-frame threshold; tune from profiling if real files show jitter.
+const drop_late_video_after_seconds = 0.100;
 const packet_queue_capacity = 128;
 
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
+    dropped_frame_count: usize = 0,
     last_time_seconds: ?f64 = null,
 };
 
@@ -286,8 +289,11 @@ fn receiveAndPresentVideo(
     stats: *VideoDecodeStats,
 ) !bool {
     while (try decoder.receive()) |frame| {
-        stats.frame_count += 1;
         stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
+        if (isVideoFrameTooLate(audio_clock, stats.last_time_seconds)) {
+            stats.dropped_frame_count += 1;
+            continue;
+        }
 
         if (output.* == null) {
             output.* = try SdlVideoOutput.init(frame.width, frame.height);
@@ -295,8 +301,16 @@ fn receiveAndPresentVideo(
 
         waitForVideoTime(video_clock, audio_clock, stats.last_time_seconds);
         if (!try output.*.?.present(try decoder.currentYuv420p())) return false;
+        stats.frame_count += 1;
     }
     return true;
+}
+
+fn isVideoFrameTooLate(audio_clock: ?*AudioClock, frame_seconds: ?f64) bool {
+    const video_seconds = frame_seconds orelse return false;
+    const clock = audio_clock orelse return false;
+    const audio_seconds = clock.seconds() orelse return false;
+    return audio_seconds - video_seconds > drop_late_video_after_seconds;
 }
 
 fn receiveAndQueueAudio(

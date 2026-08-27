@@ -69,8 +69,8 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     };
     if (video_play_stats.frame_count > 0) {
         std.debug.print(
-            "video window: frames={d} last_time={?d:.3}s\n",
-            .{ video_play_stats.frame_count, video_play_stats.last_time_seconds },
+            "video window: frames={d} dropped={d} last_time={?d:.3}s\n",
+            .{ video_play_stats.frame_count, video_play_stats.dropped_frame_count, video_play_stats.last_time_seconds },
         );
     }
 }
