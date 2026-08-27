@@ -66,6 +66,5 @@ pub fn present(self: *@This(), frame: Yuv420pFrame) !bool {
         if (event.type == sdl.SDL_QUIT) return false;
     }
 
-    sdl.SDL_Delay(33);
     return true;
 }

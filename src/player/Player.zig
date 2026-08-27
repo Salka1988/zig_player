@@ -6,10 +6,16 @@ const MediaProbe = @import("MediaProbe.zig");
 const SdlVideoOutput = @import("../video/sdl/SdlVideoOutput.zig");
 const State = @import("State.zig").State;
 const VideoProbe = @import("VideoProbe.zig");
+const sdl = @import("../sdl/bindings.zig");
 
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
     last_time_seconds: ?f64 = null,
+};
+
+const VideoPlaybackClock = struct {
+    start_ms: ?u64 = null,
+    first_frame_seconds: ?f64 = null,
 };
 
 allocator: std.mem.Allocator,
@@ -54,14 +60,15 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     var output: ?SdlVideoOutput = null;
     defer if (output) |*video_output| video_output.deinit();
 
+    var clock: VideoPlaybackClock = .{};
     var stats: VideoDecodeStats = .{};
     while (try demuxer.readPacketForStream(stream.index)) {
         try decoder.sendCurrentPacket(&demuxer);
-        if (!try receiveAndPresentVideo(&decoder, &output, &stats)) return stats;
+        if (!try receiveAndPresentVideo(&decoder, &output, &clock, &stats)) return stats;
     }
 
     try decoder.sendEndOfStream();
-    _ = try receiveAndPresentVideo(&decoder, &output, &stats);
+    _ = try receiveAndPresentVideo(&decoder, &output, &clock, &stats);
 
     return stats;
 }
@@ -76,6 +83,7 @@ fn clearPath(self: *@This()) void {
 fn receiveAndPresentVideo(
     decoder: *FfmpegVideoDecoder,
     output: *?SdlVideoOutput,
+    clock: *VideoPlaybackClock,
     stats: *VideoDecodeStats,
 ) !bool {
     while (try decoder.receive()) |frame| {
@@ -86,11 +94,31 @@ fn receiveAndPresentVideo(
             output.* = try SdlVideoOutput.init(frame.width, frame.height);
         }
 
+        waitForVideoTime(clock, stats.last_time_seconds);
         if (!try output.*.?.present(try decoder.currentYuv420p())) {
             return false;
         }
     }
     return true;
+}
+
+fn waitForVideoTime(clock: *VideoPlaybackClock, frame_seconds: ?f64) void {
+    const seconds = frame_seconds orelse return;
+
+    if (clock.first_frame_seconds == null) {
+        clock.first_frame_seconds = seconds;
+        clock.start_ms = sdl.SDL_GetTicks64();
+        return;
+    }
+
+    const elapsed_seconds = seconds - clock.first_frame_seconds.?;
+    if (elapsed_seconds <= 0) return;
+
+    const target_ms = clock.start_ms.? + @as(u64, @intFromFloat(elapsed_seconds * std.time.ms_per_s));
+    const now_ms = sdl.SDL_GetTicks64();
+    if (target_ms > now_ms) {
+        sdl.SDL_Delay(@intCast(target_ms - now_ms));
+    }
 }
 
 test "load owns path and stop clears it" {

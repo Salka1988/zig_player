@@ -65,4 +65,5 @@ pub extern fn SDL_RenderCopy(
 pub extern fn SDL_RenderPresent(renderer: *SDL_Renderer) void;
 pub extern fn SDL_PumpEvents() void;
 pub extern fn SDL_PollEvent(event: *SDL_Event) c_int;
+pub extern fn SDL_GetTicks64() u64;
 pub extern fn SDL_Delay(ms: u32) void;
