@@ -1,8 +1,10 @@
 const std = @import("std");
 
 const FfmpegDemuxer = @import("../demux/FfmpegDemuxer.zig");
+const FfmpegAudioDecoder = @import("../codec/audio/FfmpegAudioDecoder.zig");
 const FfmpegVideoDecoder = @import("../codec/video/FfmpegVideoDecoder.zig");
 const MediaProbe = @import("MediaProbe.zig");
+const SdlAudioOutput = @import("../audio/sdl/SdlAudioOutput.zig");
 const SdlVideoOutput = @import("../video/sdl/SdlVideoOutput.zig");
 const State = @import("State.zig").State;
 const VideoProbe = @import("VideoProbe.zig");
@@ -52,23 +54,45 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     var demuxer = try FfmpegDemuxer.open(self.allocator, self.path orelse return error.NoMediaLoaded);
     defer demuxer.deinit();
 
-    const stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
+    const video_stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
+    const audio_stream = try demuxer.firstSupportedAudioStream();
 
-    var decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
-    defer decoder.deinit();
+    var video_decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, video_stream);
+    defer video_decoder.deinit();
 
-    var output: ?SdlVideoOutput = null;
-    defer if (output) |*video_output| video_output.deinit();
+    var audio_decoder: ?FfmpegAudioDecoder = if (audio_stream) |stream|
+        try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream)
+    else
+        null;
+    defer if (audio_decoder) |*decoder| decoder.deinit();
+
+    var video_output: ?SdlVideoOutput = null;
+    defer if (video_output) |*output| output.deinit();
+
+    var audio_output: ?SdlAudioOutput = null;
+    defer if (audio_output) |*output| output.deinit();
 
     var clock: VideoPlaybackClock = .{};
     var stats: VideoDecodeStats = .{};
-    while (try demuxer.readPacketForStream(stream.index)) {
-        try decoder.sendCurrentPacket(&demuxer);
-        if (!try receiveAndPresentVideo(&decoder, &output, &clock, &stats)) return stats;
+    while (try demuxer.readPacket()) |stream_index| {
+        if (stream_index == video_stream.index) {
+            try video_decoder.sendCurrentPacket(&demuxer);
+            if (!try receiveAndPresentVideo(&video_decoder, &video_output, &clock, &stats)) return stats;
+        } else if (audio_stream != null and stream_index == audio_stream.?.index) {
+            try audio_decoder.?.sendCurrentPacket(&demuxer);
+            try receiveAndQueueAudio(&audio_decoder.?, &audio_output, self.allocator);
+        }
     }
 
-    try decoder.sendEndOfStream();
-    _ = try receiveAndPresentVideo(&decoder, &output, &clock, &stats);
+    try video_decoder.sendEndOfStream();
+    _ = try receiveAndPresentVideo(&video_decoder, &video_output, &clock, &stats);
+
+    if (audio_decoder) |*decoder| {
+        try decoder.sendEndOfStream();
+        try receiveAndQueueAudio(decoder, &audio_output, self.allocator);
+    }
+
+    if (audio_output) |*output| output.drain();
 
     return stats;
 }
@@ -100,6 +124,20 @@ fn receiveAndPresentVideo(
         }
     }
     return true;
+}
+
+fn receiveAndQueueAudio(
+    decoder: *FfmpegAudioDecoder,
+    output: *?SdlAudioOutput,
+    allocator: std.mem.Allocator,
+) !void {
+    while (try decoder.receive()) |_| {
+        const frame = try decoder.currentF32Planar();
+        if (output.* == null) {
+            output.* = try SdlAudioOutput.init(frame.sample_rate, frame.channel_count);
+        }
+        try output.*.?.queueF32Planar(allocator, frame);
+    }
 }
 
 fn waitForVideoTime(clock: *VideoPlaybackClock, frame_seconds: ?f64) void {

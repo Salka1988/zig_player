@@ -1,3 +1,4 @@
+pub const SDL_INIT_AUDIO: u32 = 0x00000010;
 pub const SDL_INIT_VIDEO: u32 = 0x00000020;
 pub const SDL_WINDOW_SHOWN: u32 = 0x00000004;
 pub const SDL_WINDOWPOS_CENTERED: i32 = 0x2FFF0000;
@@ -5,10 +6,24 @@ pub const SDL_RENDERER_ACCELERATED: u32 = 0x00000002;
 pub const SDL_TEXTUREACCESS_STREAMING: i32 = 1;
 pub const SDL_PIXELFORMAT_IYUV: u32 = 1448433993;
 pub const SDL_QUIT: u32 = 0x100;
+pub const AUDIO_F32SYS: u16 = 0x8120;
 
 pub const SDL_Window = opaque {};
 pub const SDL_Renderer = opaque {};
 pub const SDL_Texture = opaque {};
+pub const SDL_AudioDeviceID = u32;
+
+pub const SDL_AudioSpec = extern struct {
+    freq: c_int,
+    format: u16,
+    channels: u8,
+    silence: u8,
+    samples: u16,
+    padding: u16,
+    size: u32,
+    callback: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.c) void,
+    userdata: ?*anyopaque,
+};
 
 pub const SDL_Event = extern union {
     type: u32,
@@ -16,6 +31,8 @@ pub const SDL_Event = extern union {
 };
 
 pub extern fn SDL_Init(flags: u32) c_int;
+pub extern fn SDL_InitSubSystem(flags: u32) c_int;
+pub extern fn SDL_QuitSubSystem(flags: u32) void;
 pub extern fn SDL_Quit() void;
 
 pub extern fn SDL_CreateWindow(
@@ -63,7 +80,18 @@ pub extern fn SDL_RenderCopy(
     dstrect: ?*const anyopaque,
 ) c_int;
 pub extern fn SDL_RenderPresent(renderer: *SDL_Renderer) void;
-pub extern fn SDL_PumpEvents() void;
 pub extern fn SDL_PollEvent(event: *SDL_Event) c_int;
 pub extern fn SDL_GetTicks64() u64;
 pub extern fn SDL_Delay(ms: u32) void;
+
+pub extern fn SDL_OpenAudioDevice(
+    device: ?[*:0]const u8,
+    iscapture: c_int,
+    desired: *const SDL_AudioSpec,
+    obtained: ?*SDL_AudioSpec,
+    allowed_changes: c_int,
+) SDL_AudioDeviceID;
+pub extern fn SDL_CloseAudioDevice(device: SDL_AudioDeviceID) void;
+pub extern fn SDL_PauseAudioDevice(device: SDL_AudioDeviceID, pause_on: c_int) void;
+pub extern fn SDL_QueueAudio(device: SDL_AudioDeviceID, data: *const anyopaque, len: u32) c_int;
+pub extern fn SDL_GetQueuedAudioSize(device: SDL_AudioDeviceID) u32;

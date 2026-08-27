@@ -1,5 +1,6 @@
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const AudioFrame = @import("../../domain/AudioFrame.zig");
+const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
 const TimeBase = @import("../../domain/TimeBase.zig");
 const c = @import("../../ffmpeg/bindings.zig").c;
@@ -72,6 +73,28 @@ pub fn receive(self: *@This()) !?AudioFrame {
         .sample_rate = @intCast(self.frame.sample_rate),
         .channel_count = @intCast(self.frame.ch_layout.nb_channels),
         .pts = self.timestamp(self.frame.best_effort_timestamp),
+    };
+}
+
+pub fn currentF32Planar(self: *const @This()) !F32PlanarAudioFrame {
+    if (self.frame.format != c.AV_SAMPLE_FMT_FLTP) return error.UnsupportedAudioSampleFormat;
+
+    const channel_count: u32 = @intCast(self.frame.ch_layout.nb_channels);
+    if (channel_count == 0 or channel_count > 2) return error.UnsupportedAudioChannelCount;
+
+    var channels: [2][*c]const f32 = undefined;
+    channels[0] = @ptrCast(@alignCast(self.frame.extended_data[0]));
+    if (channel_count == 2) {
+        channels[1] = @ptrCast(@alignCast(self.frame.extended_data[1]));
+    } else {
+        channels[1] = channels[0];
+    }
+
+    return .{
+        .sample_count = @intCast(self.frame.nb_samples),
+        .sample_rate = @intCast(self.frame.sample_rate),
+        .channel_count = channel_count,
+        .channels = channels,
     };
 }
 
