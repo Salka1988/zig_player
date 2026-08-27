@@ -22,6 +22,8 @@ pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
     dropped_frame_count: usize = 0,
     last_time_seconds: ?f64 = null,
+    max_late_seconds: f64 = 0,
+    max_early_seconds: f64 = 0,
 };
 
 const VideoPlaybackClock = struct {
@@ -290,7 +292,7 @@ fn receiveAndPresentVideo(
 ) !bool {
     while (try decoder.receive()) |frame| {
         stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
-        if (isVideoFrameTooLate(audio_clock, stats.last_time_seconds)) {
+        if (observeVideoSync(stats, audio_clock, stats.last_time_seconds)) {
             stats.dropped_frame_count += 1;
             continue;
         }
@@ -306,11 +308,19 @@ fn receiveAndPresentVideo(
     return true;
 }
 
-fn isVideoFrameTooLate(audio_clock: ?*AudioClock, frame_seconds: ?f64) bool {
+fn observeVideoSync(stats: *VideoDecodeStats, audio_clock: ?*AudioClock, frame_seconds: ?f64) bool {
     const video_seconds = frame_seconds orelse return false;
     const clock = audio_clock orelse return false;
     const audio_seconds = clock.seconds() orelse return false;
-    return audio_seconds - video_seconds > drop_late_video_after_seconds;
+    const delta = audio_seconds - video_seconds;
+
+    if (delta > 0) {
+        stats.max_late_seconds = @max(stats.max_late_seconds, delta);
+    } else {
+        stats.max_early_seconds = @max(stats.max_early_seconds, -delta);
+    }
+
+    return delta > drop_late_video_after_seconds;
 }
 
 fn receiveAndQueueAudio(
