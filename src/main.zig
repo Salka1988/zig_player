@@ -65,10 +65,10 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     }
 
     std.debug.print("state: {s}\n", .{@tagName(player.state)});
-    for (frames[0..frame_count]) |frame| {
+    for (frames[0..frame_count], 0..) |frame, index| {
         std.debug.print(
-            "frame: {d}x{d} time={?d:.3}s\n",
-            .{ frame.width, frame.height, frame.time_seconds },
+            "video present: frame={d} size={d}x{d} time={?d:.3}s\n",
+            .{ index, frame.width, frame.height, frame.time_seconds },
         );
     }
     if (probe) |result| if (result.audio.frame) |frame| {
