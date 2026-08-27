@@ -79,19 +79,19 @@ pub fn firstSupportedAudioStream(self: *const @This()) !?StreamInfo {
     return null;
 }
 
-fn readPacket(self: *@This()) !bool {
+pub fn readPacket(self: *@This()) !?u32 {
     c.av_packet_unref(self.packet);
 
     const result = c.av_read_frame(self.format_ctx, self.packet);
-    if (result == c.AVERROR_EOF) return false;
+    if (result == c.AVERROR_EOF) return null;
     if (result < 0) return error.Ffmpeg;
 
-    return true;
+    return @intCast(self.packet.stream_index);
 }
 
 pub fn readPacketForStream(self: *@This(), stream_index: u32) !bool {
-    while (try self.readPacket()) {
-        if (self.packet.stream_index == stream_index) {
+    while (try self.readPacket()) |packet_stream_index| {
+        if (packet_stream_index == stream_index) {
             return true;
         }
     }

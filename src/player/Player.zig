@@ -18,6 +18,11 @@ pub const AudioDecodeStats = struct {
     last_time_seconds: ?f64 = null,
 };
 
+pub const MediaDecodeStats = struct {
+    video: VideoDecodeStats = .{},
+    audio: AudioDecodeStats = .{},
+};
+
 allocator: std.mem.Allocator,
 state: State = .idle,
 path: ?[]const u8 = null,
@@ -48,44 +53,44 @@ pub fn probeLoaded(
     return MediaProbe.run(self.allocator, self.path orelse return error.NoMediaLoaded, video_frames);
 }
 
-pub fn decodeLoadedVideo(self: *@This()) !VideoDecodeStats {
+pub fn decodeLoadedMedia(self: *@This()) !MediaDecodeStats {
     var demuxer = try FfmpegDemuxer.open(self.allocator, self.path orelse return error.NoMediaLoaded);
     defer demuxer.deinit();
 
-    const stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
+    const video_stream = try demuxer.firstSupportedVideoStream();
+    const audio_stream = try demuxer.firstSupportedAudioStream();
 
-    var decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
-    defer decoder.deinit();
+    var video_decoder: ?FfmpegVideoDecoder = if (video_stream) |stream|
+        try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream)
+    else
+        null;
+    defer if (video_decoder) |*decoder| decoder.deinit();
 
-    var stats: VideoDecodeStats = .{};
-    while (try demuxer.readPacketForStream(stream.index)) {
-        try decoder.sendCurrentPacket(&demuxer);
-        try receiveVideoStats(&decoder, &stats);
+    var audio_decoder: ?FfmpegAudioDecoder = if (audio_stream) |stream|
+        try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream)
+    else
+        null;
+    defer if (audio_decoder) |*decoder| decoder.deinit();
+
+    var stats: MediaDecodeStats = .{};
+    while (try demuxer.readPacket()) |stream_index| {
+        if (video_stream != null and stream_index == video_stream.?.index) {
+            try video_decoder.?.sendCurrentPacket(&demuxer);
+            try receiveVideoStats(&video_decoder.?, &stats.video);
+        } else if (audio_stream != null and stream_index == audio_stream.?.index) {
+            try audio_decoder.?.sendCurrentPacket(&demuxer);
+            try receiveAudioStats(&audio_decoder.?, &stats.audio);
+        }
     }
 
-    try decoder.sendEndOfStream();
-    try receiveVideoStats(&decoder, &stats);
-
-    return stats;
-}
-
-pub fn decodeLoadedAudio(self: *@This()) !AudioDecodeStats {
-    var demuxer = try FfmpegDemuxer.open(self.allocator, self.path orelse return error.NoMediaLoaded);
-    defer demuxer.deinit();
-
-    const stream = (try demuxer.firstSupportedAudioStream()) orelse return .{};
-
-    var decoder = try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream);
-    defer decoder.deinit();
-
-    var stats: AudioDecodeStats = .{};
-    while (try demuxer.readPacketForStream(stream.index)) {
-        try decoder.sendCurrentPacket(&demuxer);
-        try receiveAudioStats(&decoder, &stats);
+    if (video_decoder) |*decoder| {
+        try decoder.sendEndOfStream();
+        try receiveVideoStats(decoder, &stats.video);
     }
-
-    try decoder.sendEndOfStream();
-    try receiveAudioStats(&decoder, &stats);
+    if (audio_decoder) |*decoder| {
+        try decoder.sendEndOfStream();
+        try receiveAudioStats(decoder, &stats.audio);
+    }
 
     return stats;
 }

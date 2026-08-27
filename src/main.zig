@@ -25,8 +25,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
     var frame_count: usize = 0;
     var probe: ?zig_player.MediaProbe.Result = null;
-    var video_decode_stats: zig_player.Player.VideoDecodeStats = .{};
-    var audio_decode_stats: zig_player.Player.AudioDecodeStats = .{};
+    var decode_stats: zig_player.Player.MediaDecodeStats = .{};
     defer if (probe) |*result| result.deinit(player_allocator);
 
     if (args.len > 1) {
@@ -35,8 +34,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
         probe = try player.probeLoaded(&frames);
         frame_count = probe.?.video.frame_count;
-        video_decode_stats = try player.decodeLoadedVideo();
-        audio_decode_stats = try player.decodeLoadedAudio();
+        decode_stats = try player.decodeLoadedMedia();
 
         for (probe.?.streams) |stream| {
             std.debug.print(
@@ -79,16 +77,16 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             .{ frame.sample_count, frame.sample_rate, frame.channel_count, if (frame.pts) |pts| pts.seconds else null },
         );
     };
-    if (video_decode_stats.frame_count > 0) {
+    if (decode_stats.video.frame_count > 0) {
         std.debug.print(
             "video decoded: frames={d} last_time={?d:.3}s\n",
-            .{ video_decode_stats.frame_count, video_decode_stats.last_time_seconds },
+            .{ decode_stats.video.frame_count, decode_stats.video.last_time_seconds },
         );
     }
-    if (audio_decode_stats.frame_count > 0) {
+    if (decode_stats.audio.frame_count > 0) {
         std.debug.print(
             "audio decoded: frames={d} samples={d} last_time={?d:.3}s\n",
-            .{ audio_decode_stats.frame_count, audio_decode_stats.sample_count, audio_decode_stats.last_time_seconds },
+            .{ decode_stats.audio.frame_count, decode_stats.audio.sample_count, decode_stats.audio.last_time_seconds },
         );
     }
 }
