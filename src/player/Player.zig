@@ -77,7 +77,7 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     while (try demuxer.readPacket()) |stream_index| {
         if (stream_index == video_stream.index) {
             try video_decoder.sendCurrentPacket(&demuxer);
-            if (!try receiveAndPresentVideo(&video_decoder, &video_output, &clock, &stats)) return stats;
+            if (!try receiveAndPresentVideo(&video_decoder, &video_output, &audio_output, &clock, &stats)) return stats;
         } else if (audio_stream != null and stream_index == audio_stream.?.index) {
             try audio_decoder.?.sendCurrentPacket(&demuxer);
             try receiveAndQueueAudio(&audio_decoder.?, &audio_output, self.allocator);
@@ -85,7 +85,7 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     }
 
     try video_decoder.sendEndOfStream();
-    _ = try receiveAndPresentVideo(&video_decoder, &video_output, &clock, &stats);
+    _ = try receiveAndPresentVideo(&video_decoder, &video_output, &audio_output, &clock, &stats);
 
     if (audio_decoder) |*decoder| {
         try decoder.sendEndOfStream();
@@ -107,6 +107,7 @@ fn clearPath(self: *@This()) void {
 fn receiveAndPresentVideo(
     decoder: *FfmpegVideoDecoder,
     output: *?SdlVideoOutput,
+    audio_output: *?SdlAudioOutput,
     clock: *VideoPlaybackClock,
     stats: *VideoDecodeStats,
 ) !bool {
@@ -118,7 +119,7 @@ fn receiveAndPresentVideo(
             output.* = try SdlVideoOutput.init(frame.width, frame.height);
         }
 
-        waitForVideoTime(clock, stats.last_time_seconds);
+        waitForVideoTime(clock, audio_output, stats.last_time_seconds);
         if (!try output.*.?.present(try decoder.currentYuv420p())) {
             return false;
         }
@@ -140,8 +141,16 @@ fn receiveAndQueueAudio(
     }
 }
 
-fn waitForVideoTime(clock: *VideoPlaybackClock, frame_seconds: ?f64) void {
+fn waitForVideoTime(
+    clock: *VideoPlaybackClock,
+    audio_output: *?SdlAudioOutput,
+    frame_seconds: ?f64,
+) void {
     const seconds = frame_seconds orelse return;
+
+    if (audio_output.*) |*output| {
+        if (output.waitUntil(seconds)) return;
+    }
 
     if (clock.first_frame_seconds == null) {
         clock.first_frame_seconds = seconds;

@@ -94,6 +94,7 @@ pub fn currentF32Planar(self: *const @This()) !F32PlanarAudioFrame {
         .sample_count = @intCast(self.frame.nb_samples),
         .sample_rate = @intCast(self.frame.sample_rate),
         .channel_count = channel_count,
+        .pts = self.timestamp(self.frame.best_effort_timestamp),
         .channels = channels,
     };
 }
