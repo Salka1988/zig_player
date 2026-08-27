@@ -1,26 +1,15 @@
 const std = @import("std");
 
-const FfmpegAudioDecoder = @import("../codec/audio/FfmpegAudioDecoder.zig");
 const FfmpegDemuxer = @import("../demux/FfmpegDemuxer.zig");
 const FfmpegVideoDecoder = @import("../codec/video/FfmpegVideoDecoder.zig");
 const MediaProbe = @import("MediaProbe.zig");
+const SdlVideoOutput = @import("../video/sdl/SdlVideoOutput.zig");
 const State = @import("State.zig").State;
 const VideoProbe = @import("VideoProbe.zig");
 
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
     last_time_seconds: ?f64 = null,
-};
-
-pub const AudioDecodeStats = struct {
-    frame_count: usize = 0,
-    sample_count: usize = 0,
-    last_time_seconds: ?f64 = null,
-};
-
-pub const MediaDecodeStats = struct {
-    video: VideoDecodeStats = .{},
-    audio: AudioDecodeStats = .{},
 };
 
 allocator: std.mem.Allocator,
@@ -53,44 +42,26 @@ pub fn probeLoaded(
     return MediaProbe.run(self.allocator, self.path orelse return error.NoMediaLoaded, video_frames);
 }
 
-pub fn decodeLoadedMedia(self: *@This()) !MediaDecodeStats {
+pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     var demuxer = try FfmpegDemuxer.open(self.allocator, self.path orelse return error.NoMediaLoaded);
     defer demuxer.deinit();
 
-    const video_stream = try demuxer.firstSupportedVideoStream();
-    const audio_stream = try demuxer.firstSupportedAudioStream();
+    const stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
 
-    var video_decoder: ?FfmpegVideoDecoder = if (video_stream) |stream|
-        try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream)
-    else
-        null;
-    defer if (video_decoder) |*decoder| decoder.deinit();
+    var decoder = try FfmpegVideoDecoder.openFromDemuxer(&demuxer, stream);
+    defer decoder.deinit();
 
-    var audio_decoder: ?FfmpegAudioDecoder = if (audio_stream) |stream|
-        try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream)
-    else
-        null;
-    defer if (audio_decoder) |*decoder| decoder.deinit();
+    var output: ?SdlVideoOutput = null;
+    defer if (output) |*video_output| video_output.deinit();
 
-    var stats: MediaDecodeStats = .{};
-    while (try demuxer.readPacket()) |stream_index| {
-        if (video_stream != null and stream_index == video_stream.?.index) {
-            try video_decoder.?.sendCurrentPacket(&demuxer);
-            try receiveVideoStats(&video_decoder.?, &stats.video);
-        } else if (audio_stream != null and stream_index == audio_stream.?.index) {
-            try audio_decoder.?.sendCurrentPacket(&demuxer);
-            try receiveAudioStats(&audio_decoder.?, &stats.audio);
-        }
+    var stats: VideoDecodeStats = .{};
+    while (try demuxer.readPacketForStream(stream.index)) {
+        try decoder.sendCurrentPacket(&demuxer);
+        if (!try receiveAndPresentVideo(&decoder, &output, &stats)) return stats;
     }
 
-    if (video_decoder) |*decoder| {
-        try decoder.sendEndOfStream();
-        try receiveVideoStats(decoder, &stats.video);
-    }
-    if (audio_decoder) |*decoder| {
-        try decoder.sendEndOfStream();
-        try receiveAudioStats(decoder, &stats.audio);
-    }
+    try decoder.sendEndOfStream();
+    _ = try receiveAndPresentVideo(&decoder, &output, &stats);
 
     return stats;
 }
@@ -102,19 +73,24 @@ fn clearPath(self: *@This()) void {
     }
 }
 
-fn receiveVideoStats(decoder: *FfmpegVideoDecoder, stats: *VideoDecodeStats) !void {
+fn receiveAndPresentVideo(
+    decoder: *FfmpegVideoDecoder,
+    output: *?SdlVideoOutput,
+    stats: *VideoDecodeStats,
+) !bool {
     while (try decoder.receive()) |frame| {
         stats.frame_count += 1;
         stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
-    }
-}
 
-fn receiveAudioStats(decoder: *FfmpegAudioDecoder, stats: *AudioDecodeStats) !void {
-    while (try decoder.receive()) |frame| {
-        stats.frame_count += 1;
-        stats.sample_count += frame.sample_count;
-        stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
+        if (output.* == null) {
+            output.* = try SdlVideoOutput.init(frame.width, frame.height);
+        }
+
+        if (!try output.*.?.present(try decoder.currentYuv420p())) {
+            return false;
+        }
     }
+    return true;
 }
 
 test "load owns path and stop clears it" {

@@ -2,6 +2,7 @@ const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
 const TimeBase = @import("../../domain/TimeBase.zig");
 const VideoFrame = @import("../../domain/VideoFrame.zig");
+const Yuv420pFrame = @import("../../domain/Yuv420pFrame.zig");
 const c = @import("../../ffmpeg/bindings.zig").c;
 
 ctx: *c.AVCodecContext,
@@ -71,6 +72,23 @@ pub fn receive(self: *@This()) !?VideoFrame {
         .width = @intCast(self.frame.width),
         .height = @intCast(self.frame.height),
         .pts = self.timestamp(self.frame.best_effort_timestamp),
+    };
+}
+
+pub fn currentYuv420p(self: *const @This()) !Yuv420pFrame {
+    if (self.frame.format != c.AV_PIX_FMT_YUV420P) {
+        return error.UnsupportedPixelFormat;
+    }
+
+    return .{
+        .width = @intCast(self.frame.width),
+        .height = @intCast(self.frame.height),
+        .y = self.frame.data[0],
+        .u = self.frame.data[1],
+        .v = self.frame.data[2],
+        .y_stride = self.frame.linesize[0],
+        .u_stride = self.frame.linesize[1],
+        .v_stride = self.frame.linesize[2],
     };
 }
 

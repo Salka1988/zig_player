@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
         // which requires us to specify a target.
         .target = target,
     });
-    linkFfmpeg(mod);
+    linkSystemLibraries(mod);
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    linkFfmpeg(exe.root_module);
+    linkSystemLibraries(exe.root_module);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -157,11 +157,13 @@ pub fn build(b: *std.Build) void {
     // and reading its source code will allow you to master it.
 }
 
-fn linkFfmpeg(module: *std.Build.Module) void {
+fn linkSystemLibraries(module: *std.Build.Module) void {
     module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
     module.linkSystemLibrary("avformat", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("avcodec", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("avutil", .{ .use_pkg_config = .no });
+    module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include/SDL2" });
+    module.linkSystemLibrary("SDL2", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("c", .{});
 }

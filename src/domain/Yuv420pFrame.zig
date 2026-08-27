@@ -1,0 +1,8 @@
+width: u32,
+height: u32,
+y: [*c]const u8,
+u: [*c]const u8,
+v: [*c]const u8,
+y_stride: i32,
+u_stride: i32,
+v_stride: i32,

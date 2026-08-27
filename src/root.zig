@@ -9,6 +9,7 @@ pub const TimeBase = @import("domain/TimeBase.zig");
 pub const Timestamp = @import("domain/Timestamp.zig");
 pub const AudioFrame = @import("domain/AudioFrame.zig");
 pub const VideoFrame = @import("domain/VideoFrame.zig");
+pub const Yuv420pFrame = @import("domain/Yuv420pFrame.zig");
 pub const FfmpegDemuxer = @import("demux/FfmpegDemuxer.zig");
 pub const FfmpegAudioDecoder = @import("codec/audio/FfmpegAudioDecoder.zig");
 pub const FfmpegVideoDecoder = @import("codec/video/FfmpegVideoDecoder.zig");
@@ -23,4 +24,6 @@ test {
     _ = @import("codec/audio/FfmpegAudioDecoder.zig");
     _ = @import("codec/video/FfmpegVideoDecoder.zig");
     _ = @import("ffmpeg/bindings.zig");
+    _ = @import("sdl/bindings.zig");
+    _ = @import("video/sdl/SdlVideoOutput.zig");
 }

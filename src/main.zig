@@ -25,7 +25,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     var frames: [max_frames]zig_player.VideoProbe.FrameSummary = undefined;
     var frame_count: usize = 0;
     var probe: ?zig_player.MediaProbe.Result = null;
-    var decode_stats: zig_player.Player.MediaDecodeStats = .{};
+    var video_play_stats: zig_player.Player.VideoDecodeStats = .{};
     defer if (probe) |*result| result.deinit(player_allocator);
 
     if (args.len > 1) {
@@ -34,7 +34,7 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
         probe = try player.probeLoaded(&frames);
         frame_count = probe.?.video.frame_count;
-        decode_stats = try player.decodeLoadedMedia();
+        video_play_stats = try player.playLoadedVideoWindow();
 
         for (probe.?.streams) |stream| {
             std.debug.print(
@@ -77,16 +77,10 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             .{ frame.sample_count, frame.sample_rate, frame.channel_count, if (frame.pts) |pts| pts.seconds else null },
         );
     };
-    if (decode_stats.video.frame_count > 0) {
+    if (video_play_stats.frame_count > 0) {
         std.debug.print(
-            "video decoded: frames={d} last_time={?d:.3}s\n",
-            .{ decode_stats.video.frame_count, decode_stats.video.last_time_seconds },
-        );
-    }
-    if (decode_stats.audio.frame_count > 0) {
-        std.debug.print(
-            "audio decoded: frames={d} samples={d} last_time={?d:.3}s\n",
-            .{ decode_stats.audio.frame_count, decode_stats.audio.sample_count, decode_stats.audio.last_time_seconds },
+            "video window: frames={d} last_time={?d:.3}s\n",
+            .{ video_play_stats.frame_count, video_play_stats.last_time_seconds },
         );
     }
 }
