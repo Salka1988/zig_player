@@ -29,9 +29,9 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
 
     if (args.len > 1) {
         try std.Io.Dir.cwd().access(init.io, args[1], .{});
-        try player.handle(.{ .load = args[1] });
+        try player.open(args[1]);
 
-        probe = try zig_player.MediaProbe.run(player_allocator, args[1], &frames);
+        probe = try player.probeLoaded(&frames);
         frame_count = probe.?.video.frame_count;
 
         for (probe.?.streams) |stream| {

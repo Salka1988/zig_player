@@ -1,6 +1,5 @@
 pub const Player = @import("player/Player.zig");
 pub const State = @import("player/State.zig").State;
-pub const Command = @import("player/Command.zig").Command;
 pub const AudioProbe = @import("player/AudioProbe.zig");
 pub const MediaProbe = @import("player/MediaProbe.zig");
 pub const VideoProbe = @import("player/VideoProbe.zig");
