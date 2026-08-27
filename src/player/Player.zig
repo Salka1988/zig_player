@@ -35,7 +35,6 @@ const VideoPlaybackClock = struct {
 const AudioClock = struct {
     start_ms: u64 = no_audio_start,
     first_ms: i64 = 0,
-    done: u8 = 0,
 
     fn start(self: *AudioClock, timestamp_seconds: f64) void {
         @atomicStore(i64, &self.first_ms, @intFromFloat(timestamp_seconds * std.time.ms_per_s), .release);
@@ -49,10 +48,6 @@ const AudioClock = struct {
         const first_ms = @atomicLoad(i64, &self.first_ms, .acquire);
         const elapsed_ms = sdl.SDL_GetTicks64() - start_ms;
         return (@as(f64, @floatFromInt(first_ms)) + @as(f64, @floatFromInt(elapsed_ms))) / std.time.ms_per_s;
-    }
-
-    fn markDone(self: *AudioClock) void {
-        @atomicStore(u8, &self.done, 1, .release);
     }
 };
 
@@ -239,7 +234,6 @@ fn audioThreadMain(context: *AudioThreadContext) void {
     runAudioThread(context) catch |err| {
         context.err = err;
     };
-    context.clock.markDone();
 }
 
 fn demuxThreadMain(context: *DemuxThreadContext) void {

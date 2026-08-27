@@ -71,12 +71,6 @@ pub fn close(self: *@This()) void {
     self.lock.unlock();
 }
 
-pub fn count(self: *@This()) usize {
-    self.lockQueue();
-    defer self.lock.unlock();
-    return self.len;
-}
-
 fn popReady(self: *@This()) ?Packet {
     self.lockQueue();
     defer self.lock.unlock();
