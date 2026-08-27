@@ -69,12 +69,13 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     };
     if (video_play_stats.frame_count > 0) {
         std.debug.print(
-            "video window: frames={d} dropped={d} max_late={d:.3}s max_early={d:.3}s last_time={?d:.3}s\n",
+            "video window: frames={d} dropped={d} max_late={d:.3}s max_early={d:.3}s audio_queue_max={d:.3}s last_time={?d:.3}s\n",
             .{
                 video_play_stats.frame_count,
                 video_play_stats.dropped_frame_count,
                 video_play_stats.max_late_seconds,
                 video_play_stats.max_early_seconds,
+                video_play_stats.audio_max_queued_seconds,
                 video_play_stats.last_time_seconds,
             },
         );

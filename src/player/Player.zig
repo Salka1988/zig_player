@@ -24,6 +24,7 @@ pub const VideoDecodeStats = struct {
     last_time_seconds: ?f64 = null,
     max_late_seconds: f64 = 0,
     max_early_seconds: f64 = 0,
+    audio_max_queued_seconds: f64 = 0,
 };
 
 const VideoPlaybackClock = struct {
@@ -74,6 +75,7 @@ const AudioThreadContext = struct {
     clock: *AudioClock,
     control: *PlaybackControl,
     err: ?anyerror = null,
+    max_queued_seconds: f64 = 0,
 };
 
 const DemuxThreadContext = struct {
@@ -217,6 +219,9 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
 
     demux_thread.join();
     if (audio_thread) |thread| thread.join();
+    if (audio_context) |context| {
+        stats.audio_max_queued_seconds = context.max_queued_seconds;
+    }
     if (demux_context.err) |err| return err;
     if (audio_context) |context| if (context.err) |err| return err;
 
@@ -334,6 +339,7 @@ fn receiveAndQueueAudio(
         }
 
         try output.*.?.queueF32Planar(context.allocator, frame);
+        context.max_queued_seconds = @max(context.max_queued_seconds, output.*.?.queuedSeconds());
         if (context.clock.seconds() == null) {
             context.clock.start(if (frame.pts) |pts| pts.seconds else 0);
             output.*.?.start();
