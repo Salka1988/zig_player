@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const FfmpegAudioDecoder = @import("../codec/audio/FfmpegAudioDecoder.zig");
 const FfmpegDemuxer = @import("../demux/FfmpegDemuxer.zig");
 const FfmpegVideoDecoder = @import("../codec/video/FfmpegVideoDecoder.zig");
 const MediaProbe = @import("MediaProbe.zig");
@@ -8,6 +9,12 @@ const VideoProbe = @import("VideoProbe.zig");
 
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
+    last_time_seconds: ?f64 = null,
+};
+
+pub const AudioDecodeStats = struct {
+    frame_count: usize = 0,
+    sample_count: usize = 0,
     last_time_seconds: ?f64 = null,
 };
 
@@ -62,6 +69,27 @@ pub fn decodeLoadedVideo(self: *@This()) !VideoDecodeStats {
     return stats;
 }
 
+pub fn decodeLoadedAudio(self: *@This()) !AudioDecodeStats {
+    var demuxer = try FfmpegDemuxer.open(self.allocator, self.path orelse return error.NoMediaLoaded);
+    defer demuxer.deinit();
+
+    const stream = (try demuxer.firstSupportedAudioStream()) orelse return .{};
+
+    var decoder = try FfmpegAudioDecoder.openFromDemuxer(&demuxer, stream);
+    defer decoder.deinit();
+
+    var stats: AudioDecodeStats = .{};
+    while (try demuxer.readPacketForStream(stream.index)) {
+        try decoder.sendCurrentPacket(&demuxer);
+        try receiveAudioStats(&decoder, &stats);
+    }
+
+    try decoder.sendEndOfStream();
+    try receiveAudioStats(&decoder, &stats);
+
+    return stats;
+}
+
 fn clearPath(self: *@This()) void {
     if (self.path) |path| {
         self.allocator.free(path);
@@ -72,6 +100,14 @@ fn clearPath(self: *@This()) void {
 fn receiveVideoStats(decoder: *FfmpegVideoDecoder, stats: *VideoDecodeStats) !void {
     while (try decoder.receive()) |frame| {
         stats.frame_count += 1;
+        stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
+    }
+}
+
+fn receiveAudioStats(decoder: *FfmpegAudioDecoder, stats: *AudioDecodeStats) !void {
+    while (try decoder.receive()) |frame| {
+        stats.frame_count += 1;
+        stats.sample_count += frame.sample_count;
         stats.last_time_seconds = if (frame.pts) |pts| pts.seconds else null;
     }
 }
