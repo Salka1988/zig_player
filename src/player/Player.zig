@@ -329,10 +329,10 @@ fn receiveAndQueueAudio(
     while (try context.decoder.receive()) |_| {
         const frame = try context.decoder.currentF32Planar();
         if (output.* == null) {
-            output.* = try SdlAudioOutput.init(frame.sample_rate, frame.channel_count);
+            output.* = try SdlAudioOutput.init(context.allocator, frame.sample_rate, frame.channel_count);
         }
 
-        try output.*.?.queueF32Planar(context.allocator, frame);
+        try output.*.?.queueF32Planar(frame);
         context.max_queued_seconds = @max(context.max_queued_seconds, output.*.?.queuedSeconds());
         if (context.clock.seconds() == null) {
             context.clock.start(if (frame.pts) |pts| pts.seconds else 0);

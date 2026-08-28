@@ -3,13 +3,15 @@ const std = @import("std");
 const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
 const sdl = @import("../../sdl/bindings.zig");
 
+allocator: std.mem.Allocator,
 device: sdl.SDL_AudioDeviceID,
 sample_rate: u32,
 channel_count: u32,
 bytes_per_sample: u32,
+interleaved: []f32 = &.{},
 started: bool = false,
 
-pub fn init(sample_rate: u32, channel_count: u32) !@This() {
+pub fn init(allocator: std.mem.Allocator, sample_rate: u32, channel_count: u32) !@This() {
     if (channel_count == 0 or channel_count > 2) return error.UnsupportedAudioChannelCount;
     if (sdl.SDL_InitSubSystem(sdl.SDL_INIT_AUDIO) < 0) return error.Sdl;
     errdefer sdl.SDL_QuitSubSystem(sdl.SDL_INIT_AUDIO);
@@ -34,6 +36,7 @@ pub fn init(sample_rate: u32, channel_count: u32) !@This() {
     if (obtained.channels != channel_count) return error.UnsupportedAudioChannelCount;
 
     return .{
+        .allocator = allocator,
         .device = device,
         .sample_rate = @intCast(obtained.freq),
         .channel_count = obtained.channels,
@@ -42,21 +45,26 @@ pub fn init(sample_rate: u32, channel_count: u32) !@This() {
 }
 
 pub fn deinit(self: *@This()) void {
+    self.allocator.free(self.interleaved);
     sdl.SDL_CloseAudioDevice(self.device);
     sdl.SDL_QuitSubSystem(sdl.SDL_INIT_AUDIO);
 }
 
 pub fn queueF32Planar(
     self: *@This(),
-    allocator: std.mem.Allocator,
     frame: F32PlanarAudioFrame,
 ) !void {
     if (frame.channel_count != self.channel_count) return error.UnsupportedAudioChannelCount;
 
     const sample_count: usize = frame.sample_count;
     const channel_count: usize = frame.channel_count;
-    const interleaved = try allocator.alloc(f32, sample_count * channel_count);
-    defer allocator.free(interleaved);
+    const sample_len = sample_count * channel_count;
+    if (self.interleaved.len < sample_len) {
+        const new_interleaved = try self.allocator.alloc(f32, sample_len);
+        self.allocator.free(self.interleaved);
+        self.interleaved = new_interleaved;
+    }
+    const interleaved = self.interleaved[0..sample_len];
 
     for (0..sample_count) |sample_index| {
         for (0..channel_count) |channel_index| {
