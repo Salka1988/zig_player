@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const FfmpegError = @import("../../ffmpeg/Error.zig");
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const AudioFrame = @import("../../domain/AudioFrame.zig");
 const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
@@ -24,13 +25,9 @@ pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This
     var ctx = c.avcodec_alloc_context3(decoder) orelse return error.OutOfMemory;
     errdefer c.avcodec_free_context(&ctx);
 
-    if (c.avcodec_parameters_to_context(ctx, codecpar) < 0) {
-        return error.Ffmpeg;
-    }
+    try FfmpegError.check(c.avcodec_parameters_to_context(ctx, codecpar), "audio avcodec_parameters_to_context");
 
-    if (c.avcodec_open2(ctx, decoder, null) < 0) {
-        return error.Ffmpeg;
-    }
+    try FfmpegError.check(c.avcodec_open2(ctx, decoder, null), "audio avcodec_open2");
 
     const frame = c.av_frame_alloc() orelse return error.OutOfMemory;
     errdefer {
@@ -58,25 +55,25 @@ pub fn sendCurrentPacket(self: *@This(), demuxer: *const FfmpegDemuxer) !void {
     if (demuxer.packet.stream_index != self.stream_index) return error.WrongStream;
 
     const result = c.avcodec_send_packet(self.ctx, demuxer.packet);
-    if (result < 0) return error.Ffmpeg;
+    try FfmpegError.check(result, "audio avcodec_send_packet");
 }
 
 pub fn sendPacket(self: *@This(), packet: *const Packet) !void {
     if (packet.streamIndex() != self.stream_index) return error.WrongStream;
 
     const result = c.avcodec_send_packet(self.ctx, packet.packet);
-    if (result < 0) return error.Ffmpeg;
+    try FfmpegError.check(result, "audio avcodec_send_packet");
 }
 
 pub fn sendEndOfStream(self: *@This()) !void {
     const result = c.avcodec_send_packet(self.ctx, null);
-    if (result < 0) return error.Ffmpeg;
+    try FfmpegError.check(result, "audio avcodec_send_packet_eof");
 }
 
 pub fn receive(self: *@This()) !?AudioFrame {
     const result = c.avcodec_receive_frame(self.ctx, self.frame);
     if (result == c.AVERROR(c.EAGAIN) or result == c.AVERROR_EOF) return null;
-    if (result < 0) return error.Ffmpeg;
+    try FfmpegError.check(result, "audio avcodec_receive_frame");
 
     return .{
         .sample_count = @intCast(self.frame.nb_samples),

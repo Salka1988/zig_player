@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const FfmpegError = @import("../ffmpeg/Error.zig");
 const StreamInfo = @import("../domain/StreamInfo.zig");
 const c = @import("../ffmpeg/bindings.zig").c;
 
@@ -11,16 +12,12 @@ pub fn open(allocator: std.mem.Allocator, path: []const u8) !@This() {
     defer allocator.free(path_z);
 
     var format_ctx: ?*c.AVFormatContext = null;
-    if (c.avformat_open_input(&format_ctx, path_z.ptr, null, null) < 0) {
-        return error.Ffmpeg;
-    }
+    try FfmpegError.check(c.avformat_open_input(&format_ctx, path_z.ptr, null, null), "avformat_open_input");
     errdefer if (format_ctx != null) {
         c.avformat_close_input(&format_ctx);
     };
 
-    if (c.avformat_find_stream_info(format_ctx, null) < 0) {
-        return error.Ffmpeg;
-    }
+    try FfmpegError.check(c.avformat_find_stream_info(format_ctx, null), "avformat_find_stream_info");
 
     return .{
         .format_ctx = format_ctx.?,
@@ -84,7 +81,7 @@ pub fn readPacket(self: *@This()) !?u32 {
 
     const result = c.av_read_frame(self.format_ctx, self.packet);
     if (result == c.AVERROR_EOF) return null;
-    if (result < 0) return error.Ffmpeg;
+    try FfmpegError.check(result, "av_read_frame");
 
     return @intCast(self.packet.stream_index);
 }

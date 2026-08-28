@@ -27,6 +27,7 @@ test {
     _ = @import("codec/audio/FfmpegAudioDecoder.zig");
     _ = @import("codec/video/FfmpegVideoDecoder.zig");
     _ = @import("ffmpeg/bindings.zig");
+    _ = @import("ffmpeg/Error.zig");
     _ = @import("ffmpeg/Packet.zig");
     _ = @import("pipeline/PacketQueue.zig");
     _ = @import("sdl/bindings.zig");
