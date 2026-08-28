@@ -26,7 +26,9 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
     defer if (probe) |*result| result.deinit(player_allocator);
 
     if (args.len > 1) {
-        try std.Io.Dir.cwd().access(init.io, args[1], .{});
+        if (!isRemoteMediaPath(args[1])) {
+            try std.Io.Dir.cwd().access(init.io, args[1], .{});
+        }
         try player.open(args[1]);
 
         probe = try player.probeLoaded(&frames);
@@ -80,4 +82,15 @@ fn run(init: std.process.Init, player_allocator: std.mem.Allocator) !void {
             },
         );
     }
+}
+
+fn isRemoteMediaPath(path: []const u8) bool {
+    return std.mem.startsWith(u8, path, "http://") or
+        std.mem.startsWith(u8, path, "https://");
+}
+
+test "remote media paths skip local filesystem access" {
+    try std.testing.expect(isRemoteMediaPath("https://example.com/video.mp4"));
+    try std.testing.expect(isRemoteMediaPath("http://example.com/video.mp4"));
+    try std.testing.expect(!isRemoteMediaPath("movie.mp4"));
 }

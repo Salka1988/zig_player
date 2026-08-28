@@ -84,7 +84,7 @@ pub fn receive(self: *@This()) !?VideoFrame {
 }
 
 pub fn currentYuv420p(self: *const @This()) !Yuv420pFrame {
-    if (self.frame.format != c.AV_PIX_FMT_YUV420P) {
+    if (self.frame.format != c.AV_PIX_FMT_YUV420P and self.frame.format != c.AV_PIX_FMT_YUVJ420P) {
         return error.UnsupportedPixelFormat;
     }
 
