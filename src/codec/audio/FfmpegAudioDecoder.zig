@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const AudioFrame = @import("../../domain/AudioFrame.zig");
 const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
@@ -85,10 +87,16 @@ pub fn receive(self: *@This()) !?AudioFrame {
 }
 
 pub fn currentF32Planar(self: *const @This()) !F32PlanarAudioFrame {
-    if (self.frame.format != c.AV_SAMPLE_FMT_FLTP) return error.UnsupportedAudioSampleFormat;
+    if (self.frame.format != c.AV_SAMPLE_FMT_FLTP) {
+        std.debug.print("unsupported audio sample format: {d}\n", .{self.frame.format});
+        return error.UnsupportedAudioSampleFormat;
+    }
 
     const channel_count: u32 = @intCast(self.frame.ch_layout.nb_channels);
-    if (channel_count == 0 or channel_count > 2) return error.UnsupportedAudioChannelCount;
+    if (channel_count == 0 or channel_count > 2) {
+        std.debug.print("unsupported audio channel count: {d}\n", .{channel_count});
+        return error.UnsupportedAudioChannelCount;
+    }
 
     var channels: [2][*c]const f32 = undefined;
     channels[0] = @ptrCast(@alignCast(self.frame.extended_data[0]));

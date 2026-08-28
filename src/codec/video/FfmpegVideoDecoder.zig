@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const Packet = @import("../../ffmpeg/Packet.zig");
 const StreamInfo = @import("../../domain/StreamInfo.zig");
@@ -85,6 +87,7 @@ pub fn receive(self: *@This()) !?VideoFrame {
 
 pub fn currentYuv420p(self: *const @This()) !Yuv420pFrame {
     if (self.frame.format != c.AV_PIX_FMT_YUV420P and self.frame.format != c.AV_PIX_FMT_YUVJ420P) {
+        std.debug.print("unsupported pixel format: {d}\n", .{self.frame.format});
         return error.UnsupportedPixelFormat;
     }
 
