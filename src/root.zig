@@ -7,6 +7,7 @@ pub const Codec = @import("domain/Codec.zig").Codec;
 pub const StreamInfo = @import("domain/StreamInfo.zig");
 pub const TimeBase = @import("domain/TimeBase.zig");
 pub const Timestamp = @import("domain/Timestamp.zig");
+pub const PixelFormat = @import("domain/PixelFormat.zig").PixelFormat;
 pub const AudioFrame = @import("domain/AudioFrame.zig");
 pub const F32PlanarAudioFrame = @import("domain/F32PlanarAudioFrame.zig");
 pub const VideoFrame = @import("domain/VideoFrame.zig");
@@ -23,6 +24,7 @@ test {
     _ = @import("player/MediaProbe.zig");
     _ = @import("player/Player.zig");
     _ = @import("player/VideoProbe.zig");
+    _ = @import("domain/PixelFormat.zig");
     _ = @import("demux/FfmpegDemuxer.zig");
     _ = @import("codec/audio/FfmpegAudioDecoder.zig");
     _ = @import("codec/video/FfmpegVideoDecoder.zig");

@@ -3,6 +3,7 @@ const std = @import("std");
 const FfmpegError = @import("../../ffmpeg/Error.zig");
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const Packet = @import("../../ffmpeg/Packet.zig");
+const PixelFormat = @import("../../domain/PixelFormat.zig").PixelFormat;
 const StreamInfo = @import("../../domain/StreamInfo.zig");
 const TimeBase = @import("../../domain/TimeBase.zig");
 const VideoFrame = @import("../../domain/VideoFrame.zig");
@@ -90,12 +91,13 @@ pub fn receive(self: *@This()) !?VideoFrame {
     return .{
         .width = @intCast(self.frame.width),
         .height = @intCast(self.frame.height),
+        .format = pixelFormat(self.frame.format),
         .pts = self.timestamp(self.frame.best_effort_timestamp),
     };
 }
 
 pub fn currentYuv420p(self: *@This()) !Yuv420pFrame {
-    if (isYuv420pFrame(self.frame)) return yuv420pFrame(self.frame);
+    if (isYuv420pFormat(pixelFormat(self.frame.format))) return yuv420pFrame(self.frame);
 
     const converted = try self.convertCurrentFrameToYuv420p();
     return yuv420pFrame(converted);
@@ -108,8 +110,21 @@ fn timestamp(self: *const @This(), value: i64) ?VideoFrame.Timestamp {
         .{ .seconds = self.time_base.seconds(value) };
 }
 
-fn isYuv420pFrame(frame: *const c.AVFrame) bool {
-    return frame.format == c.AV_PIX_FMT_YUV420P or frame.format == c.AV_PIX_FMT_YUVJ420P;
+fn pixelFormat(format: c_int) PixelFormat {
+    return switch (format) {
+        c.AV_PIX_FMT_YUV420P => .yuv420p,
+        c.AV_PIX_FMT_YUVJ420P => .yuvj420p,
+        c.AV_PIX_FMT_YUV422P => .yuv422p,
+        c.AV_PIX_FMT_NV12 => .nv12,
+        else => .{ .other = format },
+    };
+}
+
+fn isYuv420pFormat(format: PixelFormat) bool {
+    return switch (format) {
+        .yuv420p, .yuvj420p => true,
+        else => false,
+    };
 }
 
 fn yuv420pFrame(frame: *const c.AVFrame) Yuv420pFrame {

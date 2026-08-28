@@ -1,3 +1,4 @@
+const PixelFormat = @import("../../domain/PixelFormat.zig").PixelFormat;
 const Yuv420pFrame = @import("../../domain/Yuv420pFrame.zig");
 const sdl = @import("../../sdl/bindings.zig");
 
@@ -67,4 +68,11 @@ pub fn present(self: *@This(), frame: Yuv420pFrame) !bool {
     }
 
     return true;
+}
+
+pub fn supportsPixelFormat(format: PixelFormat) bool {
+    return switch (format) {
+        .yuv420p, .yuvj420p => true,
+        else => false,
+    };
 }

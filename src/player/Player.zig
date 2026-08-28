@@ -21,6 +21,7 @@ const packet_queue_capacity = 128;
 pub const VideoDecodeStats = struct {
     frame_count: usize = 0,
     dropped_frame_count: usize = 0,
+    converted_frame_count: usize = 0,
     last_time_seconds: ?f64 = null,
     max_late_seconds: f64 = 0,
     max_early_seconds: f64 = 0,
@@ -305,6 +306,9 @@ fn receiveAndPresentVideo(
         }
 
         waitForVideoTime(video_clock, audio_clock, stats.last_time_seconds);
+        if (!SdlVideoOutput.supportsPixelFormat(frame.format)) {
+            stats.converted_frame_count += 1;
+        }
         if (!try output.*.?.present(try decoder.currentYuv420p())) return false;
         stats.frame_count += 1;
     }
