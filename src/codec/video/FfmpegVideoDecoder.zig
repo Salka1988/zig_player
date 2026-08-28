@@ -11,6 +11,9 @@ const c = @import("../../ffmpeg/bindings.zig").c;
 
 ctx: *c.AVCodecContext,
 frame: *c.AVFrame,
+converted_frame: ?*c.AVFrame = null,
+sws_ctx: ?*c.SwsContext = null,
+converted_source_format: c_int = -1,
 stream_index: u32,
 time_base: TimeBase,
 
@@ -44,6 +47,15 @@ pub fn openFromDemuxer(demuxer: *const FfmpegDemuxer, stream: StreamInfo) !@This
 }
 
 pub fn deinit(self: *@This()) void {
+    if (self.sws_ctx) |ctx| {
+        c.sws_freeContext(ctx);
+    }
+
+    if (self.converted_frame) |frame| {
+        var frame_to_free: ?*c.AVFrame = frame;
+        c.av_frame_free(&frame_to_free);
+    }
+
     var frame: ?*c.AVFrame = self.frame;
     c.av_frame_free(&frame);
 
@@ -82,22 +94,11 @@ pub fn receive(self: *@This()) !?VideoFrame {
     };
 }
 
-pub fn currentYuv420p(self: *const @This()) !Yuv420pFrame {
-    if (self.frame.format != c.AV_PIX_FMT_YUV420P and self.frame.format != c.AV_PIX_FMT_YUVJ420P) {
-        std.debug.print("unsupported pixel format: {d}\n", .{self.frame.format});
-        return error.UnsupportedPixelFormat;
-    }
+pub fn currentYuv420p(self: *@This()) !Yuv420pFrame {
+    if (isYuv420pFrame(self.frame)) return yuv420pFrame(self.frame);
 
-    return .{
-        .width = @intCast(self.frame.width),
-        .height = @intCast(self.frame.height),
-        .y = self.frame.data[0],
-        .u = self.frame.data[1],
-        .v = self.frame.data[2],
-        .y_stride = self.frame.linesize[0],
-        .u_stride = self.frame.linesize[1],
-        .v_stride = self.frame.linesize[2],
-    };
+    const converted = try self.convertCurrentFrameToYuv420p();
+    return yuv420pFrame(converted);
 }
 
 fn timestamp(self: *const @This(), value: i64) ?VideoFrame.Timestamp {
@@ -105,4 +106,91 @@ fn timestamp(self: *const @This(), value: i64) ?VideoFrame.Timestamp {
         null
     else
         .{ .seconds = self.time_base.seconds(value) };
+}
+
+fn isYuv420pFrame(frame: *const c.AVFrame) bool {
+    return frame.format == c.AV_PIX_FMT_YUV420P or frame.format == c.AV_PIX_FMT_YUVJ420P;
+}
+
+fn yuv420pFrame(frame: *const c.AVFrame) Yuv420pFrame {
+    return .{
+        .width = @intCast(frame.width),
+        .height = @intCast(frame.height),
+        .y = frame.data[0],
+        .u = frame.data[1],
+        .v = frame.data[2],
+        .y_stride = frame.linesize[0],
+        .u_stride = frame.linesize[1],
+        .v_stride = frame.linesize[2],
+    };
+}
+
+fn convertCurrentFrameToYuv420p(self: *@This()) !*c.AVFrame {
+    const source_format = self.frame.format;
+    const converted = try self.conversionFrame();
+
+    if (self.sws_ctx == null or self.converted_source_format != source_format) {
+        if (self.sws_ctx) |ctx| c.sws_freeContext(ctx);
+        self.sws_ctx = c.sws_getContext(
+            self.frame.width,
+            self.frame.height,
+            source_format,
+            self.frame.width,
+            self.frame.height,
+            c.AV_PIX_FMT_YUV420P,
+            c.SWS_BILINEAR,
+            null,
+            null,
+            null,
+        ) orelse {
+            std.debug.print("unsupported pixel format: {d}\n", .{source_format});
+            return error.UnsupportedPixelFormat;
+        };
+        self.converted_source_format = source_format;
+    }
+
+    try FfmpegError.check(c.av_frame_make_writable(converted), "av_frame_make_writable");
+    const height = c.sws_scale(
+        self.sws_ctx.?,
+        @ptrCast(&self.frame.data),
+        @ptrCast(&self.frame.linesize),
+        0,
+        self.frame.height,
+        @ptrCast(&converted.data),
+        @ptrCast(&converted.linesize),
+    );
+    if (height != self.frame.height) {
+        std.debug.print("ffmpeg error: sws_scale result={d}\n", .{height});
+        return error.Ffmpeg;
+    }
+
+    return converted;
+}
+
+fn conversionFrame(self: *@This()) !*c.AVFrame {
+    if (self.converted_frame) |frame| {
+        if (frame.width == self.frame.width and frame.height == self.frame.height) return frame;
+
+        if (self.sws_ctx) |ctx| c.sws_freeContext(ctx);
+        self.sws_ctx = null;
+        self.converted_source_format = -1;
+
+        var frame_to_free: ?*c.AVFrame = frame;
+        c.av_frame_free(&frame_to_free);
+        self.converted_frame = null;
+    }
+
+    const frame = c.av_frame_alloc() orelse return error.OutOfMemory;
+    errdefer {
+        var frame_to_free: ?*c.AVFrame = frame;
+        c.av_frame_free(&frame_to_free);
+    }
+
+    frame.*.format = c.AV_PIX_FMT_YUV420P;
+    frame.*.width = self.frame.width;
+    frame.*.height = self.frame.height;
+    try FfmpegError.check(c.av_frame_get_buffer(frame, 32), "av_frame_get_buffer");
+
+    self.converted_frame = frame;
+    return frame;
 }
