@@ -154,11 +154,12 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
         try std.Thread.spawn(.{}, audioThreadMain, .{context})
     else
         null;
+    var audio_thread_joined = false;
     errdefer {
         control.requestStop();
         video_queue.close();
         if (audio_queue) |*queue| queue.close();
-        if (audio_thread) |thread| thread.join();
+        if (audio_thread != null and !audio_thread_joined) audio_thread.?.join();
     }
 
     var demux_context: DemuxThreadContext = .{
@@ -170,11 +171,12 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
         .control = &control,
     };
     const demux_thread = try std.Thread.spawn(.{}, demuxThreadMain, .{&demux_context});
+    var demux_thread_joined = false;
     errdefer {
         control.requestStop();
         video_queue.close();
         if (audio_queue) |*queue| queue.close();
-        demux_thread.join();
+        if (!demux_thread_joined) demux_thread.join();
     }
 
     var video_output: ?SdlVideoOutput = null;
@@ -213,7 +215,9 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     }
 
     demux_thread.join();
+    demux_thread_joined = true;
     if (audio_thread) |thread| thread.join();
+    audio_thread_joined = true;
     if (audio_context) |context| {
         stats.audio_max_queued_seconds = context.max_queued_seconds;
     }
