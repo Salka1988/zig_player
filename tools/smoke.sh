@@ -12,7 +12,9 @@ command -v zig >/dev/null 2>&1 || {
 }
 
 tmp_dir="${TMPDIR:-/tmp}/zig-player-smoke"
+log_file="$tmp_dir/player.log"
 mkdir -p "$tmp_dir"
+trap 'rm -rf "$tmp_dir"' EXIT
 
 echo "building zig_player"
 zig build
@@ -76,9 +78,9 @@ run_case() {
     path="$2"
 
     printf 'smoke: %s ... ' "$name"
-    ./zig-out/bin/zig_player "$path" >/tmp/zig-player-smoke.log 2>&1 || {
+    ./zig-out/bin/zig_player "$path" >"$log_file" 2>&1 || {
         echo "fail"
-        cat /tmp/zig-player-smoke.log
+        cat "$log_file"
         exit 1
     }
     echo "pass"
