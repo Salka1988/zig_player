@@ -116,11 +116,15 @@ pub fn probeLoaded(
 
 pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     const path = self.path orelse return error.NoMediaLoaded;
+    errdefer self.state = .stopping;
 
     var demuxer = try FfmpegDemuxer.open(self.allocator, path);
     defer demuxer.deinit();
 
-    const video_stream = (try demuxer.firstSupportedVideoStream()) orelse return .{};
+    const video_stream = (try demuxer.firstSupportedVideoStream()) orelse {
+        self.state = .ended;
+        return .{};
+    };
     const audio_stream = try demuxer.firstSupportedAudioStream();
     const has_audio = audio_stream != null;
 
@@ -144,6 +148,7 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
 
     var audio_clock: AudioClock = .{};
     var control: PlaybackControl = .{};
+    self.state = .playing;
     var audio_context: ?AudioThreadContext = if (has_audio) .{
         .allocator = self.allocator,
         .queue = &audio_queue.?,
@@ -225,6 +230,7 @@ pub fn playLoadedVideoWindow(self: *@This()) !VideoDecodeStats {
     if (demux_context.err) |err| return err;
     if (audio_context) |context| if (context.err) |err| return err;
 
+    self.state = if (keep_playing) .ended else .stopping;
     return stats;
 }
 
