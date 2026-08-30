@@ -101,7 +101,7 @@ pub fn receive(self: *@This()) !?AudioFrame {
 }
 
 pub fn currentF32Planar(self: *@This()) !F32PlanarAudioFrame {
-    const frame = if (sampleFormat(self.frame.format) == .fltp)
+    const frame = if (!self.needsAudioConversion())
         self.frame
     else
         try self.convertCurrentFrameToF32Planar();
@@ -135,6 +135,7 @@ fn f32PlanarFrame(self: *const @This(), frame: *const c.AVFrame) !F32PlanarAudio
 
 fn convertCurrentFrameToF32Planar(self: *@This()) !*c.AVFrame {
     var converted_frame = try self.conversionFrame();
+    const output_channel_count = self.outputChannelCount();
 
     if (self.needsNewResampler()) {
         try self.configureResampler();
@@ -144,7 +145,7 @@ fn convertCurrentFrameToF32Planar(self: *@This()) !*c.AVFrame {
     converted_frame.format = c.AV_SAMPLE_FMT_FLTP;
     converted_frame.sample_rate = self.frame.sample_rate;
     converted_frame.nb_samples = self.frame.nb_samples;
-    try FfmpegError.check(c.av_channel_layout_copy(&converted_frame.ch_layout, &self.frame.ch_layout), "av_channel_layout_copy");
+    c.av_channel_layout_default(&converted_frame.ch_layout, output_channel_count);
     try FfmpegError.check(c.av_frame_get_buffer(converted_frame, 0), "audio av_frame_get_buffer");
 
     const converted_samples = c.swr_convert_frame(self.swr_ctx, converted_frame, self.frame);
@@ -152,6 +153,14 @@ fn convertCurrentFrameToF32Planar(self: *@This()) !*c.AVFrame {
 
     converted_frame.best_effort_timestamp = self.frame.best_effort_timestamp;
     return converted_frame;
+}
+
+fn needsAudioConversion(self: *const @This()) bool {
+    return sampleFormat(self.frame.format) != .fltp or self.frame.ch_layout.nb_channels > 2;
+}
+
+fn outputChannelCount(self: *const @This()) c_int {
+    return if (self.frame.ch_layout.nb_channels > 2) 2 else self.frame.ch_layout.nb_channels;
 }
 
 fn needsNewResampler(self: *const @This()) bool {
@@ -162,11 +171,15 @@ fn needsNewResampler(self: *const @This()) bool {
 }
 
 fn configureResampler(self: *@This()) !void {
+    var output_layout: c.AVChannelLayout = undefined;
+    c.av_channel_layout_default(&output_layout, self.outputChannelCount());
+    defer c.av_channel_layout_uninit(&output_layout);
+
     var swr_ctx = self.swr_ctx;
     try FfmpegError.check(
         c.swr_alloc_set_opts2(
             &swr_ctx,
-            &self.frame.ch_layout,
+            &output_layout,
             c.AV_SAMPLE_FMT_FLTP,
             self.frame.sample_rate,
             &self.frame.ch_layout,
