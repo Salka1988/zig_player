@@ -67,7 +67,7 @@ make_hevc_aac_mp4() {
 make_h264_aac_5_1_mp4() {
     ffmpeg -hide_banner -loglevel error -y \
         -f lavfi -i testsrc=size=320x180:rate=30 \
-        -f lavfi -i anullsrc=channel_layout=5.1:sample_rate=48000 \
+        -f lavfi -i 'sine=frequency=440:sample_rate=48000,pan=5.1|FL=c0|FR=c0|FC=c0|LFE=0*c0|BL=c0|BR=c0' \
         -t 1 -pix_fmt yuv420p \
         -c:v libx264 -c:a aac \
         "$tmp_dir/h264-aac-5-1.mp4"
