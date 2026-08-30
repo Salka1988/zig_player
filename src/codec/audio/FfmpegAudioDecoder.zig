@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const AudioSampleFormat = @import("../../domain/AudioSampleFormat.zig").AudioSampleFormat;
 const FfmpegError = @import("../../ffmpeg/Error.zig");
 const FfmpegDemuxer = @import("../../demux/FfmpegDemuxer.zig");
 const AudioFrame = @import("../../domain/AudioFrame.zig");
@@ -79,12 +80,13 @@ pub fn receive(self: *@This()) !?AudioFrame {
         .sample_count = @intCast(self.frame.nb_samples),
         .sample_rate = @intCast(self.frame.sample_rate),
         .channel_count = @intCast(self.frame.ch_layout.nb_channels),
+        .format = sampleFormat(self.frame.format),
         .pts = self.timestamp(self.frame.best_effort_timestamp),
     };
 }
 
 pub fn currentF32Planar(self: *const @This()) !F32PlanarAudioFrame {
-    if (self.frame.format != c.AV_SAMPLE_FMT_FLTP) {
+    if (sampleFormat(self.frame.format) != .fltp) {
         std.debug.print("unsupported audio sample format: {d}\n", .{self.frame.format});
         return error.UnsupportedAudioSampleFormat;
     }
@@ -117,4 +119,11 @@ fn timestamp(self: *const @This(), value: i64) ?AudioFrame.Timestamp {
         null
     else
         .{ .seconds = self.time_base.seconds(value) };
+}
+
+fn sampleFormat(format: c_int) AudioSampleFormat {
+    return switch (format) {
+        c.AV_SAMPLE_FMT_FLTP => .fltp,
+        else => .{ .other = format },
+    };
 }

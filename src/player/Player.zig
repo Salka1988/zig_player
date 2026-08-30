@@ -334,7 +334,15 @@ fn receiveAndQueueAudio(
     output: *?SdlAudioOutput,
     context: *AudioThreadContext,
 ) !void {
-    while (try context.decoder.receive()) |_| {
+    while (try context.decoder.receive()) |decoded| {
+        if (!SdlAudioOutput.supportsSampleFormat(decoded.format)) {
+            switch (decoded.format) {
+                .other => |format| std.debug.print("unsupported audio sample format: {d}\n", .{format}),
+                else => std.debug.print("unsupported audio sample format: {s}\n", .{@tagName(decoded.format)}),
+            }
+            return error.UnsupportedAudioSampleFormat;
+        }
+
         const frame = try context.decoder.currentF32Planar();
         if (output.* == null) {
             output.* = try SdlAudioOutput.init(context.allocator, frame.sample_rate, frame.channel_count);

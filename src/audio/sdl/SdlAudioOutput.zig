@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const AudioSampleFormat = @import("../../domain/AudioSampleFormat.zig").AudioSampleFormat;
 const F32PlanarAudioFrame = @import("../../domain/F32PlanarAudioFrame.zig");
 const sdl = @import("../../sdl/bindings.zig");
 
@@ -93,6 +94,13 @@ pub fn start(self: *@This()) void {
 
 pub fn queuedSeconds(self: *const @This()) f64 {
     return @as(f64, @floatFromInt(sdl.SDL_GetQueuedAudioSize(self.device))) / self.bytesPerSecond();
+}
+
+pub fn supportsSampleFormat(format: AudioSampleFormat) bool {
+    return switch (format) {
+        .fltp => true,
+        else => false,
+    };
 }
 
 fn bytesPerSecond(self: *const @This()) f64 {
