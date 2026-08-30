@@ -113,6 +113,7 @@ fn codec(codec_id: c_uint) StreamInfo.Codec {
         c.AV_CODEC_ID_AAC => .aac,
         c.AV_CODEC_ID_OPUS => .opus,
         c.AV_CODEC_ID_MP3 => .mp3,
+        c.AV_CODEC_ID_PCM_S16LE => .pcm_s16le,
         else => .unknown,
     };
 }
@@ -126,7 +127,7 @@ fn isSupportedVideoCodec(codec_id: StreamInfo.Codec) bool {
 
 fn isSupportedAudioCodec(codec_id: StreamInfo.Codec) bool {
     return switch (codec_id) {
-        .aac, .opus, .mp3 => true,
+        .aac, .opus, .mp3, .pcm_s16le => true,
         else => false,
     };
 }

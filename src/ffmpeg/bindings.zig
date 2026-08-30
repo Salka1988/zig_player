@@ -3,6 +3,7 @@ pub const c = @cImport({
     @cInclude("libavcodec/avcodec.h");
     @cInclude("libavutil/avutil.h");
     @cInclude("libswscale/swscale.h");
+    @cInclude("libswresample/swresample.h");
 });
 
 test "ffmpeg version is available" {

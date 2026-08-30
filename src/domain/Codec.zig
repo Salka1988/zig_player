@@ -6,5 +6,6 @@ pub const Codec = enum {
     aac,
     opus,
     mp3,
+    pcm_s16le,
     unknown,
 };

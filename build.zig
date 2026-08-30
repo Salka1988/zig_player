@@ -164,6 +164,7 @@ fn linkSystemLibraries(module: *std.Build.Module) void {
     module.linkSystemLibrary("avcodec", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("avutil", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("swscale", .{ .use_pkg_config = .no });
+    module.linkSystemLibrary("swresample", .{ .use_pkg_config = .no });
     module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include/SDL2" });
     module.linkSystemLibrary("SDL2", .{ .use_pkg_config = .no });
     module.linkSystemLibrary("c", .{});
